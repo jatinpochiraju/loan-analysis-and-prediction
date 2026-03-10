@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% block title %}SSO MFA | LoanShield{% endblock %}
+{% block body %}
+<main class="page admin-page">
+  <section class="panel">
+    <h1>SSO + MFA Center</h1>
+    <p class="small-muted">Google/Microsoft SSO config and MFA secret management.</p>
+    <div class="dash-grid">
+      <article class="panel form-panel">
+        <h2>SSO Provider</h2>
+        <form method="post" class="form-grid">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="action" value="sso">
+          <label><span>Provider</span><input name="provider_name" value="Google"></label>
+          <label><span>Client ID</span><input name="client_id" value="set-client-id"></label>
+          <label class="checkbox-row"><input type="checkbox" name="enabled"><span>Enabled</span></label>
+          <button class="btn" type="submit">Save Provider</button>
+        </form>
+      </article>
+      <article class="panel stats-panel">
+        <h2>MFA</h2>
+        <form method="post" class="form-grid">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="action" value="mfa">
+          <label><span>User ID</span><input type="number" name="user_id" value="1"></label>
+          <label><span>Secret</span><input name="secret" value="123456"></label>
+          <button class="btn" type="submit">Set Secret</button>
+        </form>
+        <form method="post" class="form-grid mtop">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="action" value="verify">
+          <label><span>User ID</span><input type="number" name="user_id" value="1"></label>
+          <label><span>Secret</span><input name="secret" value="123456"></label>
+          <button class="btn ghost" type="submit">Verify</button>
+        </form>
+      </article>
+    </div>
+    <h2 class="mtop">Providers</h2>
+    <div class="table-wrap table-readable"><table><thead><tr><th>Provider</th><th>Client ID</th><th>Enabled</th><th>Updated</th></tr></thead><tbody>{% for p in providers %}<tr><td>{{ p.provider_name }}</td><td>{{ p.client_id }}</td><td>{{ p.enabled }}</td><td>{{ p.updated_at }}</td></tr>{% else %}<tr><td colspan="4">No providers.</td></tr>{% endfor %}</tbody></table></div>
+    <h2 class="mtop">MFA Assignments</h2>
+    <div class="table-wrap table-readable"><table><thead><tr><th>User</th><th>Username</th><th>Last Verified</th><th>Updated</th></tr></thead><tbody>{% for m in mfa %}<tr><td>{{ m.user_id }}</td><td>{{ m.username }}</td><td>{{ m.last_verified_at }}</td><td>{{ m.updated_at }}</td></tr>{% else %}<tr><td colspan="4">No MFA assignments.</td></tr>{% endfor %}</tbody></table></div>
+  </section>
+</main>
+{% endblock %}

@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block title %}{{ title }} | LoanShield{% endblock %}
+{% block body %}
+<main class="page admin-page">
+  <section class="panel">
+    <div class="row-between">
+      <h1>{{ title }}</h1>
+      <a class="btn ghost" href="{{ url_for('admin_modules') }}">All Modules</a>
+    </div>
+    <p class="small-muted">{{ subtitle }}</p>
+    <div class="table-wrap table-readable">
+      <table>
+        <thead>
+          <tr>{% for col in columns %}<th>{{ col.replace('_', ' ')|title }}</th>{% endfor %}</tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            <tr>
+              {% for col in columns %}
+                <td>{{ row[col] }}</td>
+              {% endfor %}
+            </tr>
+          {% else %}
+            <tr><td colspan="{{ columns|length }}">No data available.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
+{% endblock %}

@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% block title %}Assistant | LoanShield{% endblock %}
+{% block body %}
+<main class="page admin-page chatbot-page">
+  <section class="panel chatbot-shell">
+    <h1>LoanShield Assistant</h1>
+    <p class="small-muted">Smart assistant with policy retrieval, personalized status insights, and guardrails.</p>
+
+    <div class="chat-quick-prompts">
+      {% for prompt in quick_prompts %}
+        <form method="post" class="chip-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="quick_prompt" value="{{ prompt }}">
+          <button type="submit" class="chat-chip">{{ prompt }}</button>
+        </form>
+      {% endfor %}
+    </div>
+
+    <form method="post" class="form-rows chatbot-input-row">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label><span>Ask a question</span><input name="message" maxlength="500" placeholder="Ask about status, documents, products, EMI, or approval tips." required></label>
+      <button class="btn" type="submit">Send</button>
+    </form>
+
+    <h2 style="margin-top:0.9rem;">Conversation</h2>
+    <div class="chat-thread">
+      {% for item in history %}
+        <article class="chat-exchange">
+          <div class="chat-bubble user-bubble">
+            <p class="chat-meta">You | {{ item.created_at }}</p>
+            <p>{{ item.message }}</p>
+          </div>
+          <div class="chat-bubble assistant-bubble">
+            <p class="chat-meta">Assistant</p>
+            <p>{{ item.response }}</p>
+            {% if item.blocked %}<p class="chat-blocked"><strong>Blocked by guardrails</strong></p>{% endif %}
+          </div>
+        </article>
+      {% else %}
+        <article class="chat-exchange"><div class="chat-bubble assistant-bubble"><p>No chats yet. Try a quick prompt above.</p></div></article>
+      {% endfor %}
+    </div>
+  </section>
+</main>
+{% endblock %}

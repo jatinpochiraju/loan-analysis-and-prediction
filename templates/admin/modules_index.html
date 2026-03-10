@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block title %}Admin Modules | LoanShield{% endblock %}
+{% block body %}
+<main class="page admin-page">
+  <section class="panel">
+    <h1>Admin Module Directory</h1>
+    <p class="small-muted">Navigate all operational, security, analytics, and platform engineering pages.</p>
+    <div class="module-link-grid">
+      {% for label, endpoint in modules %}
+        <a class="module-link" href="{{ url_for(endpoint) }}">{{ label }}</a>
+      {% endfor %}
+    </div>
+  </section>
+</main>
+{% endblock %}

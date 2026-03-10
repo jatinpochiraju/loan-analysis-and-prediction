@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+{% block title %}Notification Orchestration | LoanShield{% endblock %}
+{% block body %}
+<main class="page admin-page">
+  <section class="panel">
+    <h1>Notification Orchestration</h1>
+    <p class="small-muted">Template library, campaigns, and delivery metrics.</p>
+    <div class="dash-grid">
+      <article class="panel form-panel">
+        <h2>Template</h2>
+        <form method="post" class="form-grid">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="action" value="template">
+          <label><span>Template Key</span><input name="template_key" value="DUE_REMINDER"></label>
+          <label><span>Channel</span><input name="channel" value="email"></label>
+          <label><span>Subject</span><input name="subject_template" value="Payment reminder"></label>
+          <label class="wide"><span>Body</span><input name="body_template" value="Please pay before due date."></label>
+          <button class="btn" type="submit">Save Template</button>
+        </form>
+      </article>
+      <article class="panel stats-panel">
+        <h2>Campaign</h2>
+        <form method="post" class="form-grid">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="action" value="campaign">
+          <label><span>Name</span><input name="campaign_name" value="Manual Review Nudge"></label>
+          <label><span>Template Key</span><input name="template_key" value="DUE_REMINDER"></label>
+          <label><span>Audience Rule</span><input name="audience_rule" value="status=Manual Review"></label>
+          <label><span>Schedule</span><input name="scheduled_for" value="2026-03-01T10:00:00Z"></label>
+          <button class="btn" type="submit">Schedule Campaign</button>
+        </form>
+      </article>
+    </div>
+    <h2 class="mtop">Templates</h2>
+    <div class="table-wrap table-readable"><table><thead><tr><th>Key</th><th>Channel</th><th>Subject</th><th>Updated</th></tr></thead><tbody>{% for t in templates %}<tr><td>{{ t.template_key }}</td><td>{{ t.channel }}</td><td>{{ t.subject_template }}</td><td>{{ t.updated_at }}</td></tr>{% else %}<tr><td colspan="4">No templates.</td></tr>{% endfor %}</tbody></table></div>
+    <h2 class="mtop">Campaigns</h2>
+    <div class="table-wrap table-readable"><table><thead><tr><th>ID</th><th>Name</th><th>Template</th><th>Audience</th><th>Schedule</th><th>Status</th></tr></thead><tbody>{% for c in campaigns %}<tr><td>{{ c.id }}</td><td>{{ c.campaign_name }}</td><td>{{ c.template_key }}</td><td>{{ c.audience_rule }}</td><td>{{ c.scheduled_for }}</td><td>{{ c.status }}</td></tr>{% else %}<tr><td colspan="6">No campaigns.</td></tr>{% endfor %}</tbody></table></div>
+  </section>
+</main>
+{% endblock %}

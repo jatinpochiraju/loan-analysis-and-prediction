@@ -1,0 +1,279 @@
+{% extends 'base.html' %}
+{% block title %}User Dashboard | LoanShield{% endblock %}
+{% block body %}
+<main class="page dash-grid">
+  <section class="panel wide">
+    <h1>PolicyCenter | User Dashboard</h1>
+    <p>Submit applications and monitor prediction, approval, and risk trends over time.</p>
+    <div class="chips">
+      <span class="chip {{ 'ok' if chain_ok else 'bad' }}">Chain {{ 'Verified' if chain_ok else 'Compromised' }}</span>
+      <span class="chip">Blocks {{ chain_size }}</span>
+      {% if model_info %}<span class="chip">Model {{ model_info.version }}</span>{% endif %}
+    </div>
+  </section>
+
+  <section class="panel form-panel">
+    <h2>New Loan Application</h2>
+    <form method="post" action="{{ url_for('user_apply') }}" class="form-grid">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label><span>Loan Type</span>
+        <select name="loan_type" id="loanTypeSelect" required>
+          {% for code, label in loan_types %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+        </select>
+      </label>
+      <label><span>Loan Product</span>
+        <select name="product_code" required>
+          <option value="">Select product</option>
+          {% for p in products %}<option value="{{ p.code }}">{{ p.code }} - {{ p.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <label><span>Policy Type</span>
+        <select name="policy_type" required>
+          {% for code, label in policy_types %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="full-width"><span>Preferred Currencies (multi-select)</span>
+        <select name="preferred_currencies" multiple size="4" class="currency-select">
+          {% for code, label in currency_options %}
+            <option value="{{ code }}" {% if code == 'USD' %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <div class="full-width helper">Hold Ctrl/Cmd to select multiple currencies (USD, INR, AUD, Pound/GBP, Rand/ZAR, Euro/EUR, Yuan/CNY, Baht/THB).</div>
+      <label><span>Region</span>
+        <select name="region" required>
+          <option value="">Select</option>
+          {% for region in regions %}<option value="{{ region }}">{{ region }}</option>{% endfor %}
+        </select>
+      </label>
+      <label><span>KYC ID Number</span><input type="text" name="kyc_id_number" maxlength="40" required></label>
+      <label><span>Income Document Ref</span><input type="text" name="income_doc_ref" maxlength="80" required></label>
+      <label><span>Current Salary (annual)</span><input type="number" name="current_salary" min="12000" required></label>
+      <label><span>Monthly Expenditure</span><input type="number" name="monthly_expenditure" min="0" required></label>
+      <label><span>Existing EMI</span><input type="number" name="existing_emi" min="0" required></label>
+      <label><span>Requested Amount</span><input type="number" name="requested_amount" min="1000" required></label>
+      <label><span>Loan Term (months)</span><input type="number" name="loan_term_months" min="6" max="420" required></label>
+      <label><span>Employment Years</span><input type="number" step="0.1" name="employment_years" min="0" required></label>
+      <label><span>Credit Score</span><input type="number" name="credit_score" min="300" max="900" required></label>
+      <label><span>Collateral Value</span><input type="number" name="collateral_value" min="0" required></label>
+      <div class="full-width loan-type-sections">
+        <section class="loan-type-section" data-loan-type="CAR">
+          <h3>Car Loan Details</h3>
+          <div class="form-grid section-grid">
+            <label><span>Vehicle Make</span><input type="text" name="vehicle_make" maxlength="40"></label>
+            <label><span>Vehicle Model</span><input type="text" name="vehicle_model" maxlength="40"></label>
+            <label><span>Vehicle Year</span><input type="number" name="vehicle_year" min="1980" max="2100"></label>
+          </div>
+        </section>
+        <section class="loan-type-section" data-loan-type="HOME">
+          <h3>Home Loan Details</h3>
+          <div class="form-grid section-grid">
+            <label><span>Property City</span><input type="text" name="property_city" maxlength="60"></label>
+            <label><span>Property Type</span><input type="text" name="property_type" maxlength="30" placeholder="Apartment, Villa, Condo..."></label>
+            <label><span>Estimated Property Value</span><input type="number" name="property_value" min="0"></label>
+          </div>
+        </section>
+        <section class="loan-type-section" data-loan-type="FURNITURE">
+          <h3>Furniture Loan Details</h3>
+          <div class="form-grid section-grid">
+            <label><span>Furniture Category</span><input type="text" name="furniture_category" maxlength="40" placeholder="Living room, Office, Bedroom..."></label>
+            <label><span>Vendor Name</span><input type="text" name="furniture_vendor" maxlength="60"></label>
+          </div>
+        </section>
+        <section class="loan-type-section" data-loan-type="TRAVEL">
+          <h3>Travel Loan Details</h3>
+          <div class="form-grid section-grid">
+            <label><span>Destination</span><input type="text" name="travel_destination" maxlength="80"></label>
+            <label><span>Travel Month</span><input type="text" name="travel_month" maxlength="20" placeholder="Apr-2026"></label>
+            <label><span>Number of Travelers</span><input type="number" name="travelers_count" min="1" max="20"></label>
+          </div>
+        </section>
+        <section class="loan-type-section" data-loan-type="STUDENT">
+          <h3>Student Loan Details</h3>
+          <div class="form-grid section-grid">
+            <label><span>Institution Name</span><input type="text" name="institution_name" maxlength="80"></label>
+            <label><span>Course Name</span><input type="text" name="course_name" maxlength="80"></label>
+            <label><span>Course Duration (months)</span><input type="number" name="course_duration_months" min="1" max="120"></label>
+          </div>
+        </section>
+        <section class="loan-type-section" data-loan-type="PERSONAL">
+          <h3>Personal Loan Details</h3>
+          <div class="form-grid section-grid">
+            <label><span>Purpose</span><input type="text" name="loan_use" maxlength="80" placeholder="Medical, emergency, consolidation..."></label>
+          </div>
+        </section>
+      </div>
+      <button class="btn" type="submit">Assess & Predict</button>
+    </form>
+  </section>
+
+  <section class="panel stats-panel">
+    <h2>Your Insights</h2>
+    <div class="metric-cards">
+      <article><span>Total Applications</span><strong>{{ insights.totals.total or 0 }}</strong></article>
+      <article><span>Approved</span><strong>{{ insights.totals.approved or 0 }}</strong></article>
+      <article><span>Avg Approval Prob.</span><strong>{{ '%.1f'|format((insights.totals.avg_prob or 0) * 100) }}%</strong></article>
+      <article><span>Avg Risk</span><strong>{{ '%.1f'|format(insights.totals.avg_risk or 0) }}</strong></article>
+      <article><span>Avg Requested</span><strong>${{ '%.0f'|format(insights.totals.avg_req or 0) }}</strong></article>
+    </div>
+    {% if insights.regions %}
+      <table>
+        <thead><tr><th>Region</th><th>Volume</th><th>Avg Prob.</th></tr></thead>
+        <tbody>
+        {% for item in insights.regions %}
+          <tr><td>{{ item.region }}</td><td>{{ item.count }}</td><td>{{ '%.1f'|format((item.avg_prob or 0) * 100) }}%</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+  </section>
+
+  <section class="panel wide">
+    <h2>Latest Decision</h2>
+    {% if result %}
+      <div class="metric-cards compact">
+        <article><span>Status</span><strong>{{ result.status }} ({{ result.tier }})</strong></article>
+        <article><span>Borrower Tier</span><strong>{{ result.borrower_segment or '-' }}</strong></article>
+        <article><span>Risk Score</span><strong>{{ result.risk_score }}</strong></article>
+        <article><span>Approval Probability</span><strong>{{ '%.1f'|format(result.approval_probability * 100) }}%</strong></article>
+        <article><span>Monthly Payment</span><strong>${{ '%.2f'|format(result.monthly_payment_est) }}</strong></article>
+        <article><span>Recommended Amount</span><strong>${{ '%.2f'|format(result.recommended_amount) }}</strong></article>
+        <article><span>Chain Hash</span><code>{{ result.blockchain_hash[:16] }}...</code></article>
+      </div>
+      {% if result_meta %}
+        <div class="metric-cards" style="margin-top:0.7rem;">
+          <article><span>Loan Product</span><strong>{{ result_meta.product_code or '-' }}</strong></article>
+          <article><span>Loan Type</span><strong>{{ result_meta.loan_type or '-' }}</strong></article>
+          <article><span>Preferred Currencies</span><strong>{{ (result_meta.preferred_currencies or ['USD'])|join(', ') }}</strong></article>
+          <article><span>Verification Level</span><strong>{{ result_meta.verification_level or 'Standard' }}</strong></article>
+          <article><span>Collateral Required</span><strong>{{ 'Yes' if result_meta.collateral_required else 'No' }}</strong></article>
+          <article><span>Collateral Shortfall</span><strong>${{ '%.2f'|format(result_meta.collateral_shortfall or 0) }}</strong></article>
+        </div>
+        {% if result_meta.required_documents %}
+          <div class="panel" style="margin-top:0.7rem;">
+            <h3>Required Documents</h3>
+            <ul>
+              {% for doc in result_meta.required_documents %}
+                <li>{{ doc }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        {% endif %}
+      {% endif %}
+      {% if explainability %}
+        <div class="panel" style="margin-top:0.7rem;">
+          <h3>Decision Explainability</h3>
+          <div class="impact-list">
+            {% for item in explainability %}
+              <div class="impact-row">
+                <span>{{ item.factor }}</span>
+                <div class="impact-track"><div class="impact-fill" style="width: {{ (item.impact|abs * 100)|round(0, 'floor') }}%"></div></div>
+                <strong>{{ '%+.2f'|format(item.impact) }}</strong>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+    {% else %}
+      <p>No new result in this session. Submit a new application.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel wide">
+    <h2>Application History</h2>
+    {% if apps %}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th><th>Created</th><th>Region</th><th>Salary</th><th>Expenditure</th>
+              <th>Requested</th><th>Loan Type</th><th>Policy Type</th><th>Currencies</th><th>Status</th><th>Decision Tier</th><th>Borrower Tier</th><th>Risk</th><th>Prob.</th><th>Download</th><th>OCR Upload</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for app in apps %}
+              <tr>
+                <td>{{ app.id }}</td>
+                <td>{{ app.created_at }}</td>
+                <td>{{ app.region }}</td>
+                <td>${{ '%.0f'|format(app.current_salary) }}</td>
+                <td>${{ '%.0f'|format(app.monthly_expenditure) }}</td>
+                <td>${{ '%.0f'|format(app.requested_amount) }}</td>
+                <td>{{ app.loan_type }}</td>
+                <td>{{ app.policy_type or 'STANDARD' }}</td>
+                <td>{{ app.preferred_currencies_label }}</td>
+                <td>{{ app.status }}</td>
+                <td>{{ app.tier }}</td>
+                <td>{{ app.borrower_segment }}</td>
+                <td>{{ app.risk_score }}</td>
+                <td>{{ '%.1f'|format(app.approval_probability * 100) }}%</td>
+                <td><a class="btn tiny ghost" href="{{ url_for('user_application_download', app_id=app.id) }}">Markdown</a></td>
+                <td>
+                  <form method="post" action="{{ url_for('user_application_upload_document', app_id=app.id) }}" enctype="multipart/form-data" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="file" name="document_file" accept=".txt,.csv,.md,.json,.pdf,.doc,.docx" required>
+                    <button class="btn tiny" type="submit">Upload</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p>No historical applications yet.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel wide">
+    <h2>Claims</h2>
+    <form method="post" action="{{ url_for('user_claim_create') }}" class="form-grid">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>
+        <span>Policy</span>
+        <select name="policy_id" required>
+          <option value="">Select Policy</option>
+          {% for p in policies %}
+            <option value="{{ p.id }}">{{ p.policy_number }} ({{ p.policy_type }})</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label><span>Claim Type</span><input name="claim_type" value="General"></label>
+      <label><span>Claimed Amount</span><input type="number" step="0.01" name="claimed_amount" min="1" required></label>
+      <label class="full-width"><span>Description</span><input name="description" maxlength="180" required></label>
+      <button class="btn" type="submit">Submit Claim</button>
+    </form>
+    <div class="table-wrap table-readable" style="margin-top:0.8rem;">
+      <table>
+        <thead><tr><th>ID</th><th>Policy ID</th><th>Type</th><th>Amount</th><th>Status</th><th>Opened</th></tr></thead>
+        <tbody>
+          {% for c in claims %}
+            <tr>
+              <td>{{ c.id }}</td><td>{{ c.policy_id }}</td><td>{{ c.claim_type }}</td>
+              <td>${{ '%.2f'|format(c.claimed_amount) }}</td><td>{{ c.status }}</td><td>{{ c.opened_at }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="6">No claims filed yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
+<script>
+(function () {
+  const typeSelect = document.getElementById("loanTypeSelect");
+  if (!typeSelect) return;
+  const sections = document.querySelectorAll(".loan-type-section");
+  const updateSections = function () {
+    const current = typeSelect.value;
+    sections.forEach(function (section) {
+      const show = section.getAttribute("data-loan-type") === current;
+      section.classList.toggle("is-active", show);
+    });
+  };
+  typeSelect.addEventListener("change", updateSections);
+  updateSections();
+})();
+</script>
+{% endblock %}

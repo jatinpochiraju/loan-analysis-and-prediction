@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% block title %}Data & Analytics | LoanShield{% endblock %}
+{% block body %}
+<main class="page admin-page">
+  <section class="panel">
+    <div class="row-between"><h1>Data & Analytics</h1><a class="btn ghost" href="{{ url_for('admin_modules') }}">All Modules</a></div>
+    <p class="small-muted">Predictive analytics views for risk, pricing accuracy, billing quality, and fraud detection.</p>
+
+    <h2>Fraud Signals</h2>
+    <div class="table-wrap table-readable"><table><thead><tr><th>Risk Band</th><th>Total</th><th>Avg Score</th></tr></thead><tbody>{% for f in data.fraud %}<tr><td>{{ f.risk_band }}</td><td>{{ f.total }}</td><td>{{ '%.2f'|format(f.avg_score or 0) }}</td></tr>{% else %}<tr><td colspan="3">No fraud data.</td></tr>{% endfor %}</tbody></table></div>
+
+    <h2 style="margin-top:0.8rem;">Quoting Analytics</h2>
+    <div class="table-wrap table-readable"><table><thead><tr><th>Product</th><th>Total Quotes</th><th>Avg Quote</th></tr></thead><tbody>{% for q in data.quotes %}<tr><td>{{ q.product_code }}</td><td>{{ q.total }}</td><td>${{ '%.2f'|format(q.avg_quote or 0) }}</td></tr>{% else %}<tr><td colspan="3">No quote analytics.</td></tr>{% endfor %}</tbody></table></div>
+
+    <h2 style="margin-top:0.8rem;">Invoice Analytics</h2>
+    <div class="table-wrap table-readable"><table><thead><tr><th>Status</th><th>Total</th><th>Total Due</th></tr></thead><tbody>{% for i in data.invoices %}<tr><td>{{ i.status }}</td><td>{{ i.total }}</td><td>${{ '%.2f'|format(i.total_due or 0) }}</td></tr>{% else %}<tr><td colspan="3">No invoice analytics.</td></tr>{% endfor %}</tbody></table></div>
+  </section>
+</main>
+{% endblock %}

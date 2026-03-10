@@ -1,0 +1,154 @@
+{% extends 'base.html' %}
+{% block title %}Model Visualizer | LoanShield{% endblock %}
+{% block body %}
+<main class="page admin-page">
+  <section class="panel">
+    <div class="row-between">
+      <h1>Entity Extension Visualizer</h1>
+      {% if user_role == 'admin' %}<a class="btn ghost" href="{{ url_for('admin_modules') }}">All Modules</a>{% endif %}
+    </div>
+    <p class="small-muted">
+      {% if is_admin %}
+        Full view of all entity updates, supertypes/subtypes, typelists, and typecodes.
+      {% else %}
+        Scoped view of entities and typelists created or modified by your account.
+      {% endif %}
+    </p>
+    <div class="metric-cards command-cards">
+      <article><span>Entities</span><strong>{{ visual.entity_count }}</strong></article>
+      <article><span>Fields</span><strong>{{ visual.field_count }}</strong></article>
+      <article><span>Typelists</span><strong>{{ visual.typelist_count }}</strong></article>
+      <article><span>Relations</span><strong>{{ visual.relation_rows|length }}</strong></article>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Extension Type Distribution</h2>
+    <canvas id="extChart" width="680" height="220"></canvas>
+  </section>
+
+  <section class="panel">
+    <h2>Relationship Type Distribution</h2>
+    <canvas id="relChart" width="680" height="220"></canvas>
+  </section>
+
+  <section class="panel wide">
+    <h2>Supertype/Subtype Hierarchy</h2>
+    {% if visual.hierarchy_edges %}
+      <svg id="hierarchySvg" width="1040" height="480" style="max-width:100%;border:1px solid #d8dbe2;border-radius:10px;background:#fff;"></svg>
+    {% else %}
+      <p>No hierarchy edges available in scope.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel wide">
+    <h2>Entity Relationship Mapping</h2>
+    <div class="table-wrap table-readable">
+      <table>
+        <thead><tr><th>Entity</th><th>Field</th><th>Ext</th><th>Relation</th><th>Related Entity</th><th>Foreign Key</th><th>Array</th><th>Circular</th></tr></thead>
+        <tbody>
+          {% for row in visual.relation_rows %}
+            <tr>
+              <td>{{ row.entity }}</td>
+              <td>{{ row.field }}</td>
+              <td>{{ row.extension_type }}</td>
+              <td>{{ row.relation_type }}</td>
+              <td>{{ row.related_entity }}</td>
+              <td>{{ row.foreign_key_field }}</td>
+              <td>{{ 'Yes' if row.is_array else 'No' }}</td>
+              <td>{{ 'Yes' if row.is_circular else 'No' }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="8">No relationship rows in scope.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel wide">
+    <h2>Typelists and Typecodes</h2>
+    <div class="metric-cards">
+      {% for t in visual.typelist_cards %}
+        <article>
+          <span>{{ t.name }} ({{ t.count }})</span>
+          <strong style="font-size:0.8rem;line-height:1.4;">{{ t.codes|join(', ') if t.codes else '-' }}</strong>
+        </article>
+      {% else %}
+        <article><span>No typelists available in scope.</span><strong>-</strong></article>
+      {% endfor %}
+    </div>
+  </section>
+</main>
+<script>
+  (function () {
+    const extData = {{ visual.ext_counts|tojson }};
+    const relData = {{ visual.rel_counts|tojson }};
+    const edges = {{ visual.hierarchy_edges|tojson }};
+
+    function drawBarChart(canvasId, dataMap, color) {
+      const c = document.getElementById(canvasId);
+      if (!c) return;
+      const ctx = c.getContext("2d");
+      const labels = Object.keys(dataMap);
+      const vals = labels.map(k => Number(dataMap[k] || 0));
+      const max = Math.max(1, ...vals);
+      const W = c.width, H = c.height, pad = 36;
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = "#f8f9fc";
+      ctx.fillRect(0, 0, W, H);
+      const bw = Math.max(28, Math.floor((W - pad * 2) / Math.max(1, labels.length) - 14));
+      labels.forEach((label, i) => {
+        const x = pad + i * (bw + 14);
+        const h = Math.floor((vals[i] / max) * (H - pad * 2));
+        const y = H - pad - h;
+        ctx.fillStyle = color;
+        ctx.fillRect(x, y, bw, h);
+        ctx.fillStyle = "#1f2330";
+        ctx.font = "12px IBM Plex Sans, sans-serif";
+        ctx.fillText(label, x, H - 14);
+        ctx.fillText(String(vals[i]), x + 4, y - 6);
+      });
+    }
+
+    function drawHierarchy(svgId, edgeRows) {
+      const svg = document.getElementById(svgId);
+      if (!svg || !edgeRows.length) return;
+      while (svg.firstChild) svg.removeChild(svg.firstChild);
+      const nodes = Array.from(new Set(edgeRows.flatMap(e => [e.from, e.to])));
+      const pos = {};
+      const cols = 4;
+      const xGap = 240, yGap = 100;
+      nodes.forEach((n, i) => {
+        pos[n] = {x: 70 + (i % cols) * xGap, y: 50 + Math.floor(i / cols) * yGap};
+      });
+      edgeRows.forEach(e => {
+        const p1 = pos[e.from], p2 = pos[e.to];
+        const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        line.setAttribute("x1", p1.x + 90); line.setAttribute("y1", p1.y + 16);
+        line.setAttribute("x2", p2.x + 90); line.setAttribute("y2", p2.y + 16);
+        line.setAttribute("stroke", "#8391a7"); line.setAttribute("stroke-width", "1.6");
+        svg.appendChild(line);
+      });
+      nodes.forEach(n => {
+        const p = pos[n];
+        const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        rect.setAttribute("x", p.x); rect.setAttribute("y", p.y);
+        rect.setAttribute("width", "180"); rect.setAttribute("height", "32");
+        rect.setAttribute("rx", "6"); rect.setAttribute("fill", "#ffffff");
+        rect.setAttribute("stroke", "#1b4fd0");
+        svg.appendChild(rect);
+        const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        t.setAttribute("x", p.x + 8); t.setAttribute("y", p.y + 20);
+        t.setAttribute("font-size", "12"); t.setAttribute("fill", "#1f2330");
+        t.textContent = n;
+        svg.appendChild(t);
+      });
+    }
+
+    drawBarChart("extChart", extData, "#2f6fec");
+    drawBarChart("relChart", relData, "#13a56a");
+    drawHierarchy("hierarchySvg", edges);
+  })();
+</script>
+{% endblock %}

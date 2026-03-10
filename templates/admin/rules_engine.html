@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% block title %}Rules Engine | LoanShield{% endblock %}
+{% block body %}
+<main class="page admin-page">
+  <section class="panel">
+    <div class="row-between">
+      <h1>Rules Engine</h1>
+      <a class="btn ghost" href="{{ url_for('admin_modules') }}">All Modules</a>
+    </div>
+    <p class="small-muted">Edit underwriting policy thresholds without code changes.</p>
+    <div class="table-wrap table-readable">
+      <table>
+        <thead>
+          <tr>
+            <th>Product</th><th>Verification</th><th>Collateral Ratio</th><th>Min Credit Score</th><th>Max DTI</th><th>Save</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rules %}
+            <tr>
+              <form method="post" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="product_code" value="{{ r.product_code }}">
+                <td><strong>{{ r.product_code }}</strong></td>
+                <td><input name="verification_level" value="{{ r.verification_level }}" required></td>
+                <td><input type="number" step="0.01" min="0" max="1" name="required_collateral_ratio" value="{{ r.required_collateral_ratio }}" required></td>
+                <td><input type="number" min="300" max="900" name="min_credit_score" value="{{ r.min_credit_score }}" required></td>
+                <td><input type="number" step="0.01" min="0" max="1" name="max_dti" value="{{ r.max_dti }}" required></td>
+                <td><button class="btn tiny" type="submit">Update</button></td>
+              </form>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block title %}Sandbox | LoanShield{% endblock %}
+{% block body %}
+<main class="page admin-page">
+  <section class="panel">
+    <div class="row-between">
+      <h1>Sandbox / Test Data</h1>
+      <a class="btn ghost" href="{{ url_for('admin_modules') }}">All Modules</a>
+    </div>
+    <p class="small-muted">Seed deterministic sample applications for demo/testing and workflow rehearsal.</p>
+    <form method="post" action="{{ url_for('admin_sandbox_seed') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn" type="submit">Seed Sample Data</button>
+    </form>
+  </section>
+</main>
+{% endblock %}

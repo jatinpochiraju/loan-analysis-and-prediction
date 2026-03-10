@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block title %}Digital Portal | LoanShield{% endblock %}
+{% block body %}
+<main class="page admin-page">
+  <section class="panel">
+    <h1>Digital Engagement Portal</h1>
+    <p class="small-muted">Self-service offers, status guidance, and engagement history for customers and agents.</p>
+    <div class="metric-cards command-cards">
+      {% for o in offers %}<article><span>{{ o.offer }}</span><strong>{{ o.detail }}</strong></article>{% endfor %}
+    </div>
+
+    <h2 style="margin-top:0.8rem;">Recent Portal Activity</h2>
+    <div class="table-wrap table-readable">
+      <table>
+        <thead><tr><th>Channel</th><th>Event</th><th>Metadata</th><th>Time</th></tr></thead>
+        <tbody>
+          {% for e in feed %}
+            <tr><td>{{ e.channel }}</td><td>{{ e.event_type }}</td><td>{{ e.metadata }}</td><td>{{ e.created_at }}</td></tr>
+          {% else %}
+            <tr><td colspan="4">No portal activity yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
+{% endblock %}

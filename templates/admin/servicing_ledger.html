@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block title %}Servicing Ledger | LoanShield{% endblock %}
+{% block body %}
+<main class="page admin-page">
+  <section class="panel">
+    <div class="row-between">
+      <h1>Servicing Ledger</h1>
+      <div class="cta-row">
+        <a class="btn ghost" href="{{ url_for('admin_modules') }}">All Modules</a>
+        <form method="post" action="{{ url_for('admin_run_delinquency') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn" type="submit">Run Delinquency Workflow</button>
+        </form>
+      </div>
+    </div>
+    <div class="metric-cards command-cards" style="margin-top:0.7rem;">
+      <article><span>Total Disbursed</span><strong>${{ '%.2f'|format(totals.disbursed or 0) }}</strong></article>
+      <article><span>Open EMI</span><strong>${{ '%.2f'|format(totals.open_emi or 0) }}</strong></article>
+      <article><span>Total Late Fees</span><strong>${{ '%.2f'|format(totals.total_fees or 0) }}</strong></article>
+      <article><span>Overdue Entries</span><strong>{{ totals.overdue_entries or 0 }}</strong></article>
+    </div>
+
+    <div class="table-wrap table-readable" style="margin-top:0.8rem;">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th><th>App</th><th>Type</th><th>Amount</th><th>Principal</th><th>Interest</th><th>Fee</th><th>Due</th><th>Status</th><th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in ledger %}
+            <tr>
+              <td>{{ row.id }}</td>
+              <td>{{ row.application_id }}</td>
+              <td>{{ row.txn_type }}</td>
+              <td>${{ '%.2f'|format(row.amount or 0) }}</td>
+              <td>{{ '%.2f'|format(row.principal_delta or 0) }}</td>
+              <td>{{ '%.2f'|format(row.interest_delta or 0) }}</td>
+              <td>{{ '%.2f'|format(row.fee_delta or 0) }}</td>
+              <td>{{ row.due_date or '-' }}</td>
+              <td>{{ row.status }}</td>
+              <td>{{ row.notes or '-' }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="10">No servicing ledger entries yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
+{% endblock %}

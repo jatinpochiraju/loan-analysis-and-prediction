@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>LoanShield Decision Hub</title>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="bg-orb orb-a"></div>
+<div class="bg-orb orb-b"></div>
+
+<header class="topbar">
+    <div class="brand">LoanShield</div>
+    <div class="topbar-meta">
+        <span class="badge">AI Risk Engine</span>
+        <span class="badge">Secure SQL</span>
+        <span class="badge">Blockchain Audit</span>
+    </div>
+</header>
+
+<main class="page-grid">
+    <section class="panel hero">
+        <p class="eyebrow">Decision Intelligence Platform</p>
+        <h1>Modern Loan Assessment, Prediction, and Approval</h1>
+        <p class="hero-copy">
+            Evaluate affordability, detect risk, estimate approval probability, and secure every submission
+            with tamper-evident blockchain-style audit blocks.
+        </p>
+        <div class="stats-row">
+            <div class="stat-card">
+                <span>Chain Integrity</span>
+                <strong class="{{ 'ok' if chain_valid else 'warn' }}">{{ 'Verified' if chain_valid else 'Compromised' }}</strong>
+            </div>
+            <div class="stat-card">
+                <span>Audit Blocks</span>
+                <strong>{{ chain_size }}</strong>
+            </div>
+        </div>
+    </section>
+
+    <section class="panel form-panel">
+        <h2>Loan Application</h2>
+
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                <div class="alerts">
+                    {% for msg in messages %}
+                        <p class="alert">{{ msg }}</p>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <form method="post" action="{{ url_for('apply') }}" class="form-grid" novalidate>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+            <label>
+                <span>Applicant name</span>
+                <input type="text" name="name" required maxlength="80" placeholder="Alex Morgan">
+            </label>
+            <label>
+                <span>PAN / Tax ID</span>
+                <input type="text" name="pan" required maxlength="12" placeholder="ABCDE1234F">
+            </label>
+            <label>
+                <span>Annual income</span>
+                <input type="number" name="annual_income" min="1000" step="100" required placeholder="120000">
+            </label>
+            <label>
+                <span>Monthly expenses</span>
+                <input type="number" name="monthly_expenses" min="0" step="10" required placeholder="2500">
+            </label>
+            <label>
+                <span>Existing loan EMI</span>
+                <input type="number" name="existing_loan_emi" min="0" step="10" required placeholder="300">
+            </label>
+            <label>
+                <span>Requested amount</span>
+                <input type="number" name="requested_amount" min="1000" step="100" required placeholder="45000">
+            </label>
+            <label>
+                <span>Loan term (months)</span>
+                <input type="number" name="loan_term_months" min="6" max="420" required placeholder="60">
+            </label>
+            <label>
+                <span>Employment years</span>
+                <input type="number" name="employment_years" min="0" step="0.1" required placeholder="5.5">
+            </label>
+            <label>
+                <span>Credit score</span>
+                <input type="number" name="credit_score" min="300" max="900" required placeholder="745">
+            </label>
+            <label>
+                <span>Collateral value</span>
+                <input type="number" name="collateral_value" min="0" step="100" required placeholder="30000">
+            </label>
+
+            <button type="submit" class="btn-primary">Run Assessment + Approval</button>
+        </form>
+    </section>
+
+    <section class="panel result-panel">
+        <h2>Prediction & Approval Output</h2>
+
+        {% if result %}
+            <div class="result-head">
+                <div>
+                    <p class="label">Application</p>
+                    <p class="value">#{{ result.application_id }}</p>
+                </div>
+                <div>
+                    <p class="label">Applicant</p>
+                    <p class="value">{{ result.name }} ({{ result.pan_masked }})</p>
+                </div>
+            </div>
+
+            <div class="status-pill {{ result.status|lower|replace(' ', '-') }}">{{ result.status }} | {{ result.tier }}</div>
+
+            <div class="metric-grid">
+                <article>
+                    <span>Risk Score</span>
+                    <strong>{{ result.risk_score }}/100</strong>
+                </article>
+                <article>
+                    <span>Approval Probability</span>
+                    <strong>{{ '%.1f'|format(result.approval_probability * 100) }}%</strong>
+                </article>
+                <article>
+                    <span>Monthly EMI Estimate</span>
+                    <strong>${{ '%.2f'|format(result.monthly_payment_est) }}</strong>
+                </article>
+                <article>
+                    <span>Recommended Max Loan</span>
+                    <strong>${{ '%.2f'|format(result.recommended_max_amount) }}</strong>
+                </article>
+                <article>
+                    <span>Debt-to-Income</span>
+                    <strong>{{ '%.2f'|format(result.debt_to_income) }}</strong>
+                </article>
+                <article>
+                    <span>Loan-to-Income</span>
+                    <strong>{{ '%.2f'|format(result.loan_to_income) }}</strong>
+                </article>
+            </div>
+
+            <div class="explain">
+                <p class="label">Decision Factors</p>
+                <ul>
+                    {% for reason in result.reasons %}
+                        <li>{{ reason }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+
+            <div class="chain-box">
+                <p class="label">Blockchain Hash</p>
+                <code>{{ result.block_hash }}</code>
+                <p class="tiny">Recorded at {{ result.created_at }} (UTC)</p>
+            </div>
+        {% else %}
+            <p class="empty-state">
+                Submit an application to generate a risk prediction, approval decision, and blockchain audit record.
+            </p>
+        {% endif %}
+    </section>
+
+    <section class="panel table-panel">
+        <h2>Recent Applications</h2>
+        {% if recent_apps %}
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>PAN</th>
+                        <th>Amount</th>
+                        <th>Status</th>
+                        <th>Risk</th>
+                        <th>Prob.</th>
+                        <th>Block</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for item in recent_apps %}
+                        <tr>
+                            <td>{{ item.id }}</td>
+                            <td>{{ item.applicant_name }}</td>
+                            <td>{{ item.pan_last4 }}</td>
+                            <td>${{ '%.2f'|format(item.requested_amount) }}</td>
+                            <td>{{ item.decision_status }}</td>
+                            <td>{{ item.risk_score }}</td>
+                            <td>{{ '%.1f'|format(item.approval_probability * 100) }}%</td>
+                            <td><code>{{ item.blockchain_hash[:10] }}...</code></td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p class="empty-state">No applications stored yet.</p>
+        {% endif %}
+    </section>
+</main>
+</body>
+</html>

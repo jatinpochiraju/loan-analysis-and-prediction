@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+{% block title %}{{ title }} | LoanShield{% endblock %}
+{% block body %}
+<main class="page admin-page">
+  <section class="panel">
+    <div class="row-between">
+      <h1>{{ title }}</h1>
+      <a class="btn ghost" href="{{ url_for('admin_modules') }}">All Modules</a>
+    </div>
+    <p class="small-muted">{{ subtitle }}</p>
+    <div class="metric-cards command-cards">
+      {% for item in items %}
+        <article>
+          <span>{{ item.rule_name or item.metric or item.name }}</span>
+          <strong>{{ item.value }}</strong>
+        </article>
+      {% endfor %}
+    </div>
+  </section>
+</main>
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% block title %}Register | LoanShield{% endblock %}
+{% block body %}
+<main class="page auth-wrap">
+  <section class="panel auth-panel">
+    <h1>Create User Account</h1>
+    <p>Self-service onboarding for applicants and analysts.</p>
+    <form method="post" class="form-rows">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label><span>Full Name</span><input name="full_name" required maxlength="80"></label>
+      <label><span>Username</span><input name="username" required maxlength="30"></label>
+      <label><span>Email</span><input type="email" name="email" required maxlength="120" placeholder="name@example.com"></label>
+      <label><span>Phone Number</span><input name="phone" required maxlength="20" placeholder="+15551234567"></label>
+      <label>
+        <span>Region</span>
+        <select name="region" required>
+          <option value="">Select region</option>
+          {% for region in regions %}
+            <option value="{{ region }}">{{ region }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label><span>Password</span><input type="password" name="password" required minlength="8"></label>
+      <button class="btn" type="submit">Register</button>
+    </form>
+  </section>
+</main>
+{% endblock %}

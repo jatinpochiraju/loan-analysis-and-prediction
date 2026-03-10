@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block title %}Partner Onboarding | LoanShield{% endblock %}
+{% block body %}
+<main class="page admin-page">
+  <section class="panel">
+    <h1>Partner Onboarding Console</h1>
+    <p class="small-muted">API key rotation, IP allowlist, and quota policy controls.</p>
+    <div class="dash-grid">
+      <article class="panel form-panel">
+        <h2>Rotate API Key</h2>
+        <form method="post" class="form-grid">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="action" value="rotate">
+          <label><span>Client Name</span><input name="client_name" value="default-partner"></label>
+          <button class="btn" type="submit">Rotate</button>
+        </form>
+      </article>
+      <article class="panel stats-panel">
+        <h2>Update Policy</h2>
+        <form method="post" class="form-grid">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="action" value="policy">
+          <label><span>Client Name</span><input name="client_name" value="default-partner"></label>
+          <label><span>IP Allowlist</span><input name="ip_allowlist" value="127.0.0.1,::1"></label>
+          <label><span>Rate/Min</span><input type="number" name="rate_limit_per_min" value="120"></label>
+          <label><span>Quota/Day</span><input type="number" name="quota_per_day" value="3000"></label>
+          <button class="btn" type="submit">Save Policy</button>
+        </form>
+      </article>
+    </div>
+    <h2 class="mtop">Clients</h2>
+    <div class="table-wrap table-readable"><table><thead><tr><th>Name</th><th>API Key</th><th>Active</th></tr></thead><tbody>{% for c in clients %}<tr><td>{{ c.name }}</td><td><code>{{ c.api_key }}</code></td><td>{{ c.is_active }}</td></tr>{% else %}<tr><td colspan="3">No clients.</td></tr>{% endfor %}</tbody></table></div>
+    <h2 class="mtop">Policies</h2>
+    <div class="table-wrap table-readable"><table><thead><tr><th>Client</th><th>Allowlist</th><th>Rate/Min</th><th>Quota/Day</th></tr></thead><tbody>{% for p in policies %}<tr><td>{{ p.client_name }}</td><td>{{ p.ip_allowlist }}</td><td>{{ p.rate_limit_per_min }}</td><td>{{ p.quota_per_day }}</td></tr>{% else %}<tr><td colspan="4">No policies.</td></tr>{% endfor %}</tbody></table></div>
+  </section>
+</main>
+{% endblock %}

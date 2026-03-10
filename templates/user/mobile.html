@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block title %}Mobile App | LoanShield{% endblock %}
+{% block body %}
+<main class="page">
+  <section class="panel">
+    <h1>Borrower Mobile Workspace</h1>
+    <p class="small-muted">PWA-ready view for doc upload, repayment tracking, and support chat.</p>
+    <div class="metric-cards">
+      <article><span>Applications</span><strong>{{ apps|length }}</strong></article>
+      <article><span>Upload Docs</span><strong>Enabled (Placeholder)</strong></article>
+      <article><span>Support</span><strong><a href="{{ url_for('chatbot') }}">Open Assistant</a></strong></article>
+    </div>
+    <div class="table-wrap table-readable mtop"><table><thead><tr><th>ID</th><th>Status</th><th>Amount</th><th>EMI</th><th>Segment</th></tr></thead><tbody>{% for a in apps %}<tr><td>{{ a.id }}</td><td>{{ a.status }}</td><td>{{ a.requested_amount }}</td><td>{{ a.monthly_payment_est }}</td><td>{{ a.borrower_segment }}</td></tr>{% else %}<tr><td colspan="5">No applications yet.</td></tr>{% endfor %}</tbody></table></div>
+  </section>
+</main>
+{% endblock %}

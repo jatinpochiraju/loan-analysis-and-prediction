@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block title %}User Management | LoanShield{% endblock %}
+{% block body %}
+<main class="page admin-page">
+  <section class="panel">
+    <div class="row-between">
+      <h1>Admin User Management</h1>
+      <a class="btn ghost" href="{{ url_for('admin_modules') }}">All Modules</a>
+    </div>
+    <p class="small-muted">Manage user access and promote authorized personnel to admin role.</p>
+    <div class="table-wrap table-readable">
+      <table>
+        <thead><tr><th>ID</th><th>Username</th><th>Name</th><th>Role</th><th>Access Level</th><th>Region</th><th>Last Login</th><th>Actions</th></tr></thead>
+        <tbody>
+          {% for u in users %}
+            <tr>
+              <td>{{ u.id }}</td>
+              <td>{{ u.username }}</td>
+              <td>{{ u.full_name }}</td>
+              <td>{{ u.role }}</td>
+              <td>{{ u.access_level or ('admin' if u.role == 'admin' else 'end_user') }}</td>
+              <td>{{ u.region or '-' }}</td>
+              <td>{{ u.last_login_at or '-' }}</td>
+              <td>
+                <form method="post" action="{{ url_for('admin_user_set_access') }}" class="inline-form" style="margin-bottom:0.35rem;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <input type="hidden" name="user_id" value="{{ u.id }}">
+                  <select name="access_level">
+                    <option value="end_user" {% if (u.access_level or '') == 'end_user' %}selected{% endif %}>end_user</option>
+                    <option value="company" {% if (u.access_level or '') == 'company' %}selected{% endif %}>company</option>
+                    <option value="admin" {% if u.role == 'admin' or (u.access_level or '') == 'admin' %}selected{% endif %}>admin</option>
+                  </select>
+                  <button class="btn tiny ghost" type="submit">Set Access</button>
+                </form>
+                {% if u.role != 'admin' %}
+                  <form method="post" action="{{ url_for('admin_user_promote') }}" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="user_id" value="{{ u.id }}">
+                    <button class="btn tiny" type="submit">Promote</button>
+                  </form>
+                {% else %}
+                  <span>Admin</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
+{% endblock %}

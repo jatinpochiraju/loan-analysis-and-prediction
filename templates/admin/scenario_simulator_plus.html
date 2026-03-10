@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% block title %}Scenario Simulator | LoanShield{% endblock %}
+{% block body %}
+<main class="page admin-page">
+  <section class="panel">
+    <h1>Scenario Simulator</h1>
+    <p class="small-muted">What-if underwriting sandbox for policy/rule changes before production.</p>
+    <form method="post" class="form-grid table-readable">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label><span>Region</span><select name="region">{% for r in regions %}<option value="{{ r }}">{{ r }}</option>{% endfor %}</select></label>
+      <label><span>Product</span><input name="product_code" value="STANDARD"></label>
+      <label><span>KYC ID</span><input name="kyc_id_number" value="SIM12345"></label>
+      <label><span>Income Ref</span><input name="income_doc_ref" value="PAYSLIP-2026"></label>
+      <label><span>Salary</span><input type="number" step="0.01" name="current_salary" value="90000"></label>
+      <label><span>Expenditure</span><input type="number" step="0.01" name="monthly_expenditure" value="2000"></label>
+      <label><span>Existing EMI</span><input type="number" step="0.01" name="existing_emi" value="250"></label>
+      <label><span>Requested Amount</span><input type="number" step="0.01" name="requested_amount" value="85000"></label>
+      <label><span>Term (months)</span><input type="number" name="loan_term_months" value="96"></label>
+      <label><span>Employment Years</span><input type="number" step="0.1" name="employment_years" value="4"></label>
+      <label><span>Credit Score</span><input type="number" name="credit_score" value="720"></label>
+      <label><span>Collateral</span><input type="number" step="0.01" name="collateral_value" value="25000"></label>
+      <button class="btn" type="submit">Run Simulation</button>
+    </form>
+    {% if result %}
+      <div class="metric-cards mtop">
+        <article><span>Status</span><strong>{{ result.status }}</strong></article>
+        <article><span>Tier</span><strong>{{ result.tier }}</strong></article>
+        <article><span>Risk Score</span><strong>{{ result.risk_score }}</strong></article>
+        <article><span>Approval Prob.</span><strong>{{ '%.2f'|format(result.approval_probability) }}</strong></article>
+        <article><span>Interest Rate</span><strong>{{ '%.4f'|format(result.interest_rate) }}</strong></article>
+        <article><span>Monthly EMI</span><strong>{{ '%.2f'|format(result.monthly_payment_est) }}</strong></article>
+      </div>
+    {% endif %}
+  </section>
+</main>
+{% endblock %}

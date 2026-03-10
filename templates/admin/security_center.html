@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block title %}Security Center | LoanShield{% endblock %}
+{% block body %}
+<main class="page admin-page">
+  <section class="panel">
+    <div class="row-between">
+      <h1>Security Center</h1>
+      <a class="btn ghost" href="{{ url_for('admin_modules') }}">All Modules</a>
+    </div>
+    <div class="metric-cards command-cards">
+      {% for card in cards %}
+        <article><span>{{ card.rule_name }}</span><strong>{{ card.value }}</strong></article>
+      {% endfor %}
+    </div>
+    <h2 style="margin-top:0.8rem;">Admin Action Distribution</h2>
+    <div class="table-wrap table-readable">
+      <table>
+        <thead><tr><th>Event Type</th><th>Total</th></tr></thead>
+        <tbody>
+          {% for item in admin_actions %}
+            <tr><td>{{ item.event_type }}</td><td>{{ item.total }}</td></tr>
+          {% else %}
+            <tr><td colspan="2">No admin action history yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
+{% endblock %}

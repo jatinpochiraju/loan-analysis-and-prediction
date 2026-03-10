@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block title %}Fraud Graph | LoanShield{% endblock %}
+{% block body %}
+<main class="page admin-page">
+  <section class="panel">
+    <div class="row-between">
+      <h1>Fraud Graph Analytics</h1>
+      <form method="post" action="{{ url_for('admin_fraud_graph_rebuild') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="btn" type="submit">Rebuild Graph</button>
+      </form>
+    </div>
+    <p class="small-muted">Identity/device-like linkage simulation across applications.</p>
+    <div class="table-wrap table-readable"><table><thead><tr><th>ID</th><th>A</th><th>B</th><th>Link Type</th><th>Weight</th><th>Status A</th><th>Status B</th></tr></thead><tbody>{% for r in rows %}<tr><td>{{ r.id }}</td><td>{{ r.application_id_a }}</td><td>{{ r.application_id_b }}</td><td>{{ r.link_type }}</td><td>{{ r.weight }}</td><td>{{ r.status_a }}</td><td>{{ r.status_b }}</td></tr>{% else %}<tr><td colspan="7">No graph edges.</td></tr>{% endfor %}</tbody></table></div>
+  </section>
+</main>
+{% endblock %}

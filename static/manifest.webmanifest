@@ -1,0 +1,15 @@
+{
+  "name": "LoanShield Mobile",
+  "short_name": "LoanShield",
+  "start_url": "/user/mobile",
+  "display": "standalone",
+  "background_color": "#eef3f7",
+  "theme_color": "#0b4a8a",
+  "icons": [
+    {
+      "src": "/static/favicon.ico",
+      "sizes": "64x64",
+      "type": "image/x-icon"
+    }
+  ]
+}

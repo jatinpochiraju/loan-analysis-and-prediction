@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block title %}Observability | LoanShield{% endblock %}
+{% block body %}
+<main class="page admin-page">
+  <section class="panel">
+    <h1>Observability Stack</h1>
+    <p class="small-muted">Structured logs, severity metrics, and runtime traces.</p>
+    <h2>By Severity</h2>
+    <div class="table-wrap table-readable"><table><thead><tr><th>Severity</th><th>Total</th></tr></thead><tbody>{% for s in by_severity %}<tr><td>{{ s.severity }}</td><td>{{ s.total }}</td></tr>{% else %}<tr><td colspan="2">No events.</td></tr>{% endfor %}</tbody></table></div>
+    <h2 class="mtop">Recent Events</h2>
+    <div class="table-wrap table-readable"><table><thead><tr><th>ID</th><th>Component</th><th>Severity</th><th>Message</th><th>Metadata</th><th>Created</th></tr></thead><tbody>{% for r in recent %}<tr><td>{{ r.id }}</td><td>{{ r.component }}</td><td>{{ r.severity }}</td><td>{{ r.message }}</td><td>{{ r.metadata }}</td><td>{{ r.created_at }}</td></tr>{% else %}<tr><td colspan="6">No events.</td></tr>{% endfor %}</tbody></table></div>
+  </section>
+</main>
+{% endblock %}

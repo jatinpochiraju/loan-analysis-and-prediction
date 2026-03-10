@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block title %}Reports & Exports | LoanShield{% endblock %}
+{% block body %}
+<main class="page admin-page">
+  <section class="panel">
+    <div class="row-between">
+      <h1>Reports & Exports</h1>
+      <a class="btn ghost" href="{{ url_for('admin_modules') }}">All Modules</a>
+    </div>
+    <p class="small-muted">Total applications in reporting scope: <strong>{{ total }}</strong></p>
+    <div class="table-wrap table-readable">
+      <table>
+        <thead><tr><th>Report</th><th>Description</th></tr></thead>
+        <tbody>
+          {% for row in rows %}
+            <tr><td>{{ row.report }}</td><td>{{ row.description }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="cta-row" style="margin-top:0.8rem;">
+      <a class="btn" href="{{ url_for('admin_reports_download') }}">Download CSV</a>
+      <a class="btn ghost" href="{{ url_for('admin_reports_download', format='md') }}">Download Signed Markdown</a>
+    </div>
+  </section>
+</main>
+{% endblock %}

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}LoanShield Suite{% endblock %}</title>
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
+</head>
+<body>
+<div class="shell">
+  <header class="suite-topbar">
+    <div class="suite-brand">LoanShield Insurance Suite</div>
+    <nav class="suite-nav">
+      <a href="{{ url_for('home') }}">Home</a>
+      {% if user_role == 'user' %}
+        {% if access_level == 'company' %}
+          <a href="{{ url_for('company_dashboard') }}">Company Workspace</a>
+        {% else %}
+          <a href="{{ url_for('user_dashboard') }}">PolicyCenter</a>
+          <a href="{{ url_for('user_profile') }}">Profile</a>
+          <a href="{{ url_for('user_simulator') }}">Simulator</a>
+          <a href="{{ url_for('user_digital_portal') }}">Digital Portal</a>
+          <a href="{{ url_for('user_mobile') }}">Mobile App</a>
+        {% endif %}
+        <a href="{{ url_for('model_visualizer') }}">Model Visualizer</a>
+        <a href="{{ url_for('chatbot') }}">Assistant</a>
+      {% endif %}
+      {% if user_role == 'admin' %}
+        <a href="{{ url_for('admin_dashboard') }}">AdminCenter</a>
+        <a href="{{ url_for('company_dashboard') }}">Company Workspace</a>
+        <a href="{{ url_for('model_visualizer') }}">Model Visualizer</a>
+        <a href="{{ url_for('admin_modules') }}">Modules</a>
+        <a href="{{ url_for('chatbot') }}">Assistant</a>
+      {% endif %}
+    </nav>
+    <div class="suite-user">
+      {% if username %}
+        <span>{{ username }} ({{ user_role }})</span>
+        <a class="btn ghost" href="{{ url_for('logout') }}">Logout</a>
+      {% else %}
+        <a class="btn ghost" href="{{ url_for('register') }}">Sign Up</a>
+        <a class="btn ghost" href="{{ url_for('user_login') }}">User Login</a>
+        <a class="btn ghost" href="{{ url_for('admin_login') }}">Admin Login</a>
+      {% endif %}
+    </div>
+  </header>
+
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}
+      <section class="flash-wrap">
+        {% for message in messages %}
+          <div class="flash">{{ message }}</div>
+        {% endfor %}
+      </section>
+    {% endif %}
+  {% endwith %}
+
+  {% block body %}{% endblock %}
+</div>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('{{ url_for("static", filename="sw.js") }}').catch(function () {});
+  });
+}
+</script>
+</body>
+</html>

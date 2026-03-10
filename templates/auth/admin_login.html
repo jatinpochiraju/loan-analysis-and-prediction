@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block title %}Admin Login | LoanShield{% endblock %}
+{% block body %}
+<main class="page auth-wrap">
+  <section class="panel auth-panel">
+    <h1>Admin Login</h1>
+    <p>Restricted access for authorized underwriting, model operations, and risk governance.</p>
+    <form method="post" class="form-rows">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label><span>Admin Username</span><input name="username" required maxlength="30"></label>
+      <label><span>Password</span><input type="password" name="password" required></label>
+      <button class="btn" type="submit">Admin Sign In</button>
+    </form>
+  </section>
+</main>
+{% endblock %}

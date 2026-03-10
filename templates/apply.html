@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Loan Application</title>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-..." crossorigin="anonymous">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="{{ url_for('welcome') }}">LoanSys</a>
+  </div>
+</nav>
+<div class="container">
+    <div class="card">
+      <div class="card-body">
+        <h1 class="card-title">Loan Application Form</h1>
+        {% with messages = get_flashed_messages() %}
+          {% if messages %}
+            <div class="alert alert-warning" role="alert">
+              {% for msg in messages %}
+                <div>{{ msg }}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+        <form method="post">
+            <div class="mb-3">
+                <label class="form-label">Name:</label>
+                <input type="text" class="form-control" name="name">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Salary:</label>
+                <input type="number" step="0.01" class="form-control" name="salary">
+            </div>
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" name="annual" id="annualCheck">
+                <label class="form-check-label" for="annualCheck">Annual?</label>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Collateral value:</label>
+                <input type="number" step="0.01" class="form-control" name="collateral">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Monthly expenditures:</label>
+                <input type="number" step="0.01" class="form-control" name="expenditures">
+            </div>
+            <button type="submit" class="btn btn-primary">Submit</button>
+        </form>
+      </div>
+    </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-..." crossorigin="anonymous"></script>
+</body>
+</html>

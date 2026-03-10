@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% block title %}Welcome | LoanShield{% endblock %}
+{% block body %}
+<main class="page home-grid">
+  <section class="panel hero">
+    <p class="kicker">Guidewire-Inspired Digital Operations</p>
+    <h1>Underwriting, Risk Prediction, Approval, and Audit Security in One Suite</h1>
+    <p>
+      LoanShield combines PolicyCenter-style workflows, predictive analytics, secure role-based access,
+      and blockchain-backed audit integrity for enterprise-grade lending operations.
+    </p>
+    <div class="chips">
+      <span class="chip {{ 'ok' if chain_ok else 'bad' }}">Chain: {{ 'Verified' if chain_ok else 'Compromised' }}</span>
+      <span class="chip">Audit blocks: {{ chain_size }}</span>
+      {% if model_info %}
+        <span class="chip">Model: {{ model_info.version }}</span>
+      {% endif %}
+    </div>
+    <div class="cta-row">
+      <a class="btn" href="{{ url_for('register') }}">Create User Account</a>
+      <a class="btn ghost" href="{{ url_for('user_login') }}">User Login</a>
+      <a class="btn ghost" href="{{ url_for('admin_login') }}">Admin Login</a>
+    </div>
+  </section>
+
+  <section class="panel module-grid">
+    <article>
+      <h3>PolicyCenter</h3>
+      <p>Loan intake, affordability scoring, and decision recommendations.</p>
+    </article>
+    <article>
+      <h3>BillingCenter</h3>
+      <p>EMI forecasting, recommended principal, and repayment profile indicators.</p>
+    </article>
+    <article>
+      <h3>ClaimCenter</h3>
+      <p>Exception handling via Manual Review queue and admin decision overrides.</p>
+    </article>
+    <article>
+      <h3>DataHub</h3>
+      <p>Historical data analysis by region, salary, expenditure, and approval outcomes.</p>
+    </article>
+  </section>
+</main>
+{% endblock %}

@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block title %}Cloud Scalability | LoanShield{% endblock %}
+{% block body %}
+<main class="page admin-page">
+  <section class="panel">
+    <div class="row-between"><h1>Cloud Scalability</h1><a class="btn ghost" href="{{ url_for('admin_modules') }}">All Modules</a></div>
+    <p class="small-muted">Cloud-ready runtime profile, autoscaling metadata, API limits, and deployment posture (non-proprietary stack).</p>
+    <div class="table-wrap table-readable">
+      <table>
+        <thead><tr><th>Setting</th><th>Value</th><th>Updated</th></tr></thead>
+        <tbody>
+          {% for s in settings %}
+            <tr><td>{{ s.setting_key }}</td><td>{{ s.setting_value }}</td><td>{{ s.updated_at }}</td></tr>
+          {% else %}
+            <tr><td colspan="3">No cloud settings.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="panel" style="margin-top:0.8rem;">
+      <h3>Suggested Deployment</h3>
+      <ul>
+        <li>Containerized Flask app with gunicorn/uvicorn workers</li>
+        <li>Managed PostgreSQL for production scale</li>
+        <li>Background workers for delinquency, notifications, retraining</li>
+        <li>Horizontal autoscaling behind load balancer</li>
+      </ul>
+    </div>
+  </section>
+</main>
+{% endblock %}

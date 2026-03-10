@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block title %}Verify Signup | LoanShield{% endblock %}
+{% block body %}
+<main class="page auth-wrap">
+  <section class="panel auth-panel">
+    <h1>Verify Email and Phone</h1>
+    <p>Enter both OTP codes sent to {{ email_masked }} and {{ phone_masked }}.</p>
+    <p class="small-muted">Codes expire at {{ expires_at }} UTC.</p>
+    <form method="post" class="form-rows">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="username" value="{{ username }}">
+      <label><span>Email OTP</span><input name="email_code" required maxlength="6" pattern="[0-9]{6}" placeholder="6-digit code"></label>
+      <label><span>Phone OTP</span><input name="phone_code" required maxlength="6" pattern="[0-9]{6}" placeholder="6-digit code"></label>
+      <button class="btn" type="submit">Verify and Create Account</button>
+    </form>
+  </section>
+</main>
+{% endblock %}

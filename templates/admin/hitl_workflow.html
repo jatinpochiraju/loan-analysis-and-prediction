@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% block title %}HITL Workflow | LoanShield{% endblock %}
+{% block body %}
+<main class="page admin-page">
+  <section class="panel">
+    <div class="row-between">
+      <h1>Human-in-the-loop Workflow</h1>
+      <form method="post" action="{{ url_for('admin_hitl_escalate') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="btn" type="submit">Run SLA Escalation</button>
+      </form>
+    </div>
+    <p class="small-muted">SLA-driven assignment queue with escalation matrix. Overdue open tasks: <strong>{{ overdue }}</strong></p>
+    <div class="table-wrap table-readable">
+      <table>
+        <thead><tr><th>ID</th><th>Application</th><th>Assignee</th><th>Stage</th><th>SLA Due</th><th>Priority</th><th>Status</th></tr></thead>
+        <tbody>
+          {% for t in tasks %}
+            <tr><td>{{ t.id }}</td><td>{{ t.application_id }}</td><td>{{ t.assignee or '-' }}</td><td>{{ t.stage }}</td><td>{{ t.sla_due_at }}</td><td>{{ t.priority }}</td><td>{{ t.status }}</td></tr>
+          {% else %}
+            <tr><td colspan="7">No workflow tasks available.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
+{% endblock %}

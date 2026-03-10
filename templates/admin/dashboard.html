@@ -1,0 +1,374 @@
+{% extends 'base.html' %}
+{% block title %}AdminCenter | LoanShield{% endblock %}
+{% block body %}
+<main class="page dash-grid admin-page admin-redesign">
+  <section class="panel wide admin-hero">
+    <div>
+      <p class="kicker">Guidewire-style Operations Console</p>
+      <h1>AdminCenter</h1>
+      <p>Underwriting operations, predictive model governance, data model design studio, and chain-backed audit controls.</p>
+    </div>
+    <div class="hero-actions">
+      <a class="btn ghost" href="{{ url_for('admin_modules') }}">All Modules</a>
+      <button type="button" class="btn" data-modal-open="entityModal">New Entity</button>
+      <button type="button" class="btn ghost" data-modal-open="typelistModal">New Typelist</button>
+      <button type="button" class="btn ghost" data-modal-open="extensionModal">Entity Extension</button>
+      <form method="post" action="{{ url_for('admin_retrain') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="btn" type="submit">Retrain Model</button>
+      </form>
+    </div>
+  </section>
+
+  <section class="panel wide status-strip">
+    <span class="chip {{ 'ok' if chain_ok else 'bad' }}">Chain {{ 'Verified' if chain_ok else 'Compromised' }}</span>
+    <span class="chip">Blocks {{ chain_size }}</span>
+    {% if model_info %}
+      <span class="chip">Model {{ model_info.version }}</span>
+      <span class="chip">Samples {{ model_info.sample_count }}</span>
+      <span class="chip">Accuracy {{ '%.2f'|format(model_info.accuracy) }}</span>
+      <span class="chip">ROC-AUC {{ '%.2f'|format(model_info.roc_auc) }}</span>
+    {% endif %}
+  </section>
+
+  <section class="panel wide">
+    <h2>Portfolio Command View</h2>
+    <div class="metric-cards command-cards">
+      <article><span>Total Applications</span><strong>{{ insights.overview.total or 0 }}</strong></article>
+      <article><span>Approved</span><strong>{{ insights.overview.approved or 0 }}</strong></article>
+      <article><span>Manual Review Queue</span><strong>{{ insights.overview.manual or 0 }}</strong></article>
+      <article><span>Rejected</span><strong>{{ insights.overview.rejected or 0 }}</strong></article>
+      <article><span>Avg Salary</span><strong>${{ '%.0f'|format(insights.overview.avg_salary or 0) }}</strong></article>
+      <article><span>Avg Expenditure</span><strong>${{ '%.0f'|format(insights.overview.avg_exp or 0) }}</strong></article>
+      <article><span>Approval Probability</span><strong>{{ '%.1f'|format((insights.overview.avg_prob or 0) * 100) }}%</strong></article>
+      <article><span>High Risk Cases</span><strong>{{ high_risk|length }}</strong></article>
+    </div>
+  </section>
+
+  <section class="panel wide">
+    <div class="row-between">
+      <h2>Servicing Snapshot</h2>
+      <a class="btn ghost" href="{{ url_for('admin_servicing_ledger') }}">Open Servicing Ledger</a>
+    </div>
+    <div class="metric-cards command-cards">
+      <article><span>Total Disbursed</span><strong>${{ '%.2f'|format(servicing.totals.disbursed or 0) }}</strong></article>
+      <article><span>Open EMI</span><strong>${{ '%.2f'|format(servicing.totals.open_emi or 0) }}</strong></article>
+      <article><span>Late Fees</span><strong>${{ '%.2f'|format(servicing.totals.total_fees or 0) }}</strong></article>
+      <article><span>Overdue Entries</span><strong>{{ servicing.totals.overdue_entries or 0 }}</strong></article>
+    </div>
+  </section>
+
+  <section class="panel form-panel">
+    <h2>Manual Review Queue</h2>
+    <p class="small-muted">Prioritized applications currently requiring underwriter action.</p>
+    <div class="table-wrap table-readable compact-table">
+      <table>
+        <thead>
+          <tr><th>ID</th><th>User</th><th>Region</th><th>Requested</th><th>Borrower Tier</th><th>Risk</th><th>Action</th></tr>
+        </thead>
+        <tbody>
+          {% for app in manual_queue %}
+            <tr>
+              <td>{{ app.id }}</td>
+              <td>{{ app.username }}</td>
+              <td>{{ app.region }}</td>
+              <td>${{ '%.0f'|format(app.requested_amount) }}</td>
+              <td>{{ app.borrower_segment }}</td>
+              <td>{{ app.risk_score }}</td>
+              <td>
+                <form method="post" action="{{ url_for('admin_decision', app_id=app.id) }}" class="inline-form">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <input type="hidden" name="tier" value="Standard">
+                  <select name="status">
+                    <option>Approved</option>
+                    <option selected>Manual Review</option>
+                    <option>Rejected</option>
+                  </select>
+                  <button class="btn" type="submit">Update</button>
+                </form>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="6">No manual review items right now.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel stats-panel">
+    <h2>Risk Radar</h2>
+    <p class="small-muted">Critical exposure snapshot for fast triage.</p>
+    <div class="risk-list">
+      {% for app in high_risk %}
+        <article>
+          <div>
+            <strong>#{{ app.id }} {{ app.username }}</strong>
+            <span>{{ app.region }} | ${{ '%.0f'|format(app.requested_amount) }}</span>
+          </div>
+          <em>Risk {{ app.risk_score }}</em>
+        </article>
+      {% else %}
+        <article><div><strong>No high-risk outliers</strong><span>All recent records are above critical threshold.</span></div><em>OK</em></article>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="panel wide">
+    <div class="row-between">
+      <h2>Data Model Studio</h2>
+      <span class="small-muted">Entity, Supertype/Subtype, Typelist, and Extension Management</span>
+    </div>
+
+    <div class="studio-grid">
+      <div>
+        <h3>Entity Registry</h3>
+        <div class="table-wrap table-readable">
+          <table>
+            <thead><tr><th>Entity</th><th>Supertype</th><th>Subtype</th><th>Fields</th><th>Description</th></tr></thead>
+            <tbody>
+              {% for entity in data_model.entities %}
+                <tr>
+                  <td>{{ entity.name }}</td>
+                  <td>{{ entity.supertype or '-' }}</td>
+                  <td>{{ entity.subtype or '-' }}</td>
+                  <td>{{ entity.field_count }}</td>
+                  <td>{{ entity.description or '-' }}</td>
+                </tr>
+              {% else %}
+                <tr><td colspan="5">No entities defined yet.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div>
+        <h3>Typelist Registry</h3>
+        <div class="table-wrap table-readable">
+          <table>
+            <thead><tr><th>Typelist</th><th>Entries</th><th>Description</th></tr></thead>
+            <tbody>
+              {% for typelist in data_model.typelists %}
+                <tr><td>{{ typelist.name }}</td><td>{{ typelist.entry_count }}</td><td>{{ typelist.description or '-' }}</td></tr>
+              {% else %}
+                <tr><td colspan="3">No typelists defined yet.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel form-panel">
+    <h2>Model Metadata</h2>
+    {% if model_info %}
+      <div class="meta-list">
+        <p><strong>Version:</strong> {{ model_info.version }}</p>
+        <p><strong>Trained:</strong> {{ model_info.trained_at }}</p>
+        <p><strong>Samples:</strong> {{ model_info.sample_count }}</p>
+      </div>
+      <h3>Features</h3>
+      <div class="token-list">
+        {% for feature in model_features %}
+          <span>{{ feature }}</span>
+        {% else %}
+          <span>No feature metadata</span>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p>No active model metadata available.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel stats-panel">
+    <h2>Generated Java/Gosu Artifacts</h2>
+    <p class="small-muted">Auto-updated when typelists/entities/extensions are modified.</p>
+    <div class="artifact-list">
+      {% for item in generated_files %}
+        <article>
+          <code>{{ item.path }}</code>
+          <span>{{ item.size }} bytes</span>
+        </article>
+      {% else %}
+        <article><code>No generated artifacts yet.</code><span>0 bytes</span></article>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="panel wide">
+    <h2>Regional Analytics</h2>
+    <div class="table-wrap table-readable">
+      <table>
+        <thead><tr><th>Region</th><th>Total</th><th>Approval Rate</th><th>Avg Salary</th><th>Avg Expenditure</th></tr></thead>
+        <tbody>
+          {% for region in insights.by_region %}
+            <tr>
+              <td>{{ region.region }}</td>
+              <td>{{ region.total }}</td>
+              <td>{{ '%.1f'|format((region.approval_rate or 0) * 100) }}%</td>
+              <td>${{ '%.0f'|format(region.avg_salary or 0) }}</td>
+              <td>${{ '%.0f'|format(region.avg_exp or 0) }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel wide">
+    <h2>Application Workbench</h2>
+    <div class="table-wrap table-readable">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th><th>User</th><th>Region</th><th>Salary</th><th>Expense</th><th>Requested</th><th>Status</th><th>Decision Tier</th><th>Borrower Tier</th><th>Risk</th><th>Prob.</th><th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for app in applications %}
+            <tr>
+              <td>{{ app.id }}</td>
+              <td>{{ app.username }}</td>
+              <td>{{ app.region }}</td>
+              <td>${{ '%.0f'|format(app.current_salary) }}</td>
+              <td>${{ '%.0f'|format(app.monthly_expenditure) }}</td>
+              <td>${{ '%.0f'|format(app.requested_amount) }}</td>
+              <td>{{ app.status }}</td>
+              <td>{{ app.tier }}</td>
+              <td>{{ app.borrower_segment }}</td>
+              <td>{{ app.risk_score }}</td>
+              <td>{{ '%.1f'|format(app.approval_probability * 100) }}%</td>
+              <td>
+                <form method="post" action="{{ url_for('admin_decision', app_id=app.id) }}" class="inline-form">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <select name="status">
+                    <option>Approved</option>
+                    <option>Manual Review</option>
+                    <option>Rejected</option>
+                  </select>
+                  <input name="tier" value="{{ app.tier }}" maxlength="20" class="small-input">
+                  <button class="btn" type="submit">Apply</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel wide">
+    <h2>Recent Chain Events</h2>
+    <div class="table-wrap table-readable">
+      <table>
+        <thead><tr><th>Time (UTC)</th><th>Type</th><th>Actor</th><th>Hash</th></tr></thead>
+        <tbody>
+          {% for event in insights.recent_events %}
+            <tr>
+              <td>{{ event.block_timestamp }}</td>
+              <td>{{ event.event_type }}</td>
+              <td>{{ event.actor }}</td>
+              <td><code>{{ event.current_hash[:20] }}...</code></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<dialog id="entityModal" class="modal">
+  <form method="post" action="{{ url_for('admin_create_entity') }}" class="form-rows modal-card">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="row-between"><h3>New Entity</h3><button type="button" class="btn tiny ghost" data-modal-close>Close</button></div>
+    <label><span>Entity Name</span><input name="name" required placeholder="LoanPolicyExt"></label>
+    <label><span>Supertype</span><input name="supertype" placeholder="PolicyPeriod"></label>
+    <label><span>Subtype</span><input name="subtype" placeholder="HomeLoanPolicy"></label>
+    <label><span>Description</span><input name="description" maxlength="180"></label>
+    <button class="btn" type="submit">Create Entity</button>
+  </form>
+</dialog>
+
+<dialog id="typelistModal" class="modal">
+  <form method="post" action="{{ url_for('admin_create_typelist') }}" class="form-rows modal-card">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="row-between"><h3>New Typelist</h3><button type="button" class="btn tiny ghost" data-modal-close>Close</button></div>
+    <label><span>Typelist Name</span><input name="name" required placeholder="LoanStatusType"></label>
+    <label><span>Description</span><input name="description" maxlength="180"></label>
+    <label><span>Initial Code</span><input name="code" placeholder="PENDING"></label>
+    <label><span>Display Name</span><input name="display_name" placeholder="Pending"></label>
+    <button class="btn" type="submit">Save Typelist</button>
+  </form>
+</dialog>
+
+<dialog id="extensionModal" class="modal">
+  <form method="post" action="{{ url_for('admin_extend_entity') }}" class="form-rows modal-card">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="row-between"><h3>Entity Extension</h3><button type="button" class="btn tiny ghost" data-modal-close>Close</button></div>
+    <label><span>Entity Name</span><input name="entity_name" required placeholder="LoanPolicyExt"></label>
+    <label><span>Field Name</span><input name="field_name" required placeholder="riskBand"></label>
+    <label>
+      <span>Extension Type</span>
+      <select name="extension_type" required>
+        <option value="EIX">EIX</option>
+        <option value="ETX">ETX</option>
+      </select>
+    </label>
+    <label>
+      <span>Field Type</span>
+      <select name="field_type" required>
+        <option value="string">string</option>
+        <option value="int">int</option>
+        <option value="float">float</option>
+        <option value="decimal">decimal</option>
+        <option value="bool">bool</option>
+        <option value="date">date</option>
+        <option value="datetime">datetime</option>
+        <option value="createdtime">createdtime</option>
+        <option value="entity_ref">entity_ref</option>
+        <option value="array">array</option>
+      </select>
+    </label>
+    <label>
+      <span>Relation Type</span>
+      <select name="relation_type" required>
+        <option value="none">none</option>
+        <option value="one_to_one">one_to_one</option>
+        <option value="one_to_many">one_to_many</option>
+        <option value="foreign_key">foreign_key</option>
+        <option value="array">array</option>
+        <option value="circular">circular</option>
+      </select>
+    </label>
+    <label><span>Related Entity</span><input name="related_entity" placeholder="PolicyTypeCatalog"></label>
+    <label><span>Foreign Key Field</span><input name="foreign_key_field" placeholder="policy_type_id"></label>
+    <label><span>Typelist Reference (optional)</span><input name="typelist_name" placeholder="LoanStatusType"></label>
+    <label><span>Description</span><input name="description" maxlength="180"></label>
+    <label class="checkbox-row"><input type="checkbox" name="is_array"> Array Relation</label>
+    <label class="checkbox-row"><input type="checkbox" name="is_circular"> Circular Relation</label>
+    <label class="checkbox-row"><input type="checkbox" name="nullable" checked> Nullable</label>
+    <button class="btn" type="submit">Apply Extension + Regenerate Java/Gosu</button>
+  </form>
+</dialog>
+
+<script>
+  (() => {
+    const openers = document.querySelectorAll('[data-modal-open]');
+    const closers = document.querySelectorAll('[data-modal-close]');
+    openers.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-modal-open');
+        const el = document.getElementById(id);
+        if (el && typeof el.showModal === 'function') el.showModal();
+      });
+    });
+    closers.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const dlg = btn.closest('dialog');
+        if (dlg) dlg.close();
+      });
+    });
+  })();
+</script>
+{% endblock %}

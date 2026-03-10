@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block title %}Case Detail | LoanShield{% endblock %}
+{% block body %}
+<main class="page admin-page">
+  <section class="panel">
+    <div class="row-between">
+      <h1>Case Detail #{{ app_row.id if app_row else 'N/A' }}</h1>
+      <a class="btn ghost" href="{{ url_for('admin_case_detail_picker') }}">Back to Picker</a>
+    </div>
+    {% if app_row %}
+      <div class="metric-cards command-cards">
+        <article><span>User</span><strong>{{ app_row.user_id }}</strong></article>
+        <article><span>Region</span><strong>{{ app_row.region }}</strong></article>
+        <article><span>Requested</span><strong>${{ '%.0f'|format(app_row.requested_amount) }}</strong></article>
+        <article><span>Status</span><strong>{{ app_row.status }}</strong></article>
+        <article><span>Tier</span><strong>{{ app_row.tier }}</strong></article>
+        <article><span>Risk</span><strong>{{ app_row.risk_score }}</strong></article>
+      </div>
+      <h2 style="margin-top:0.8rem;">Audit Timeline</h2>
+      <div class="table-wrap table-readable">
+        <table>
+          <thead><tr><th>Time</th><th>Type</th><th>Payload</th><th>Hash</th></tr></thead>
+          <tbody>
+            {% for event in events %}
+              <tr>
+                <td>{{ event.block_timestamp }}</td>
+                <td>{{ event.event_type }}</td>
+                <td>{{ event.event_payload }}</td>
+                <td><code>{{ event.current_hash[:24] }}...</code></td>
+              </tr>
+            {% else %}
+              <tr><td colspan="4">No events for this case yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p>Application not found.</p>
+    {% endif %}
+  </section>
+</main>
+{% endblock %}

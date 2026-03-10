@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block title %}Collections Strategy | LoanShield{% endblock %}
+{% block body %}
+<main class="page admin-page">
+  <section class="panel">
+    <div class="row-between">
+      <h1>Collections Strategy Engine</h1>
+      <form method="post" action="{{ url_for('admin_collections_run') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="btn" type="submit">Run Strategy</button>
+      </form>
+    </div>
+    <p class="small-muted">Cadence, settlement plans, and hardship actions.</p>
+    <h2>Active Strategies</h2>
+    <div class="table-wrap table-readable">
+      <table>
+        <thead><tr><th>Name</th><th>Min Days</th><th>Max Days</th><th>Cadence</th><th>Settlement %</th><th>Hardship</th></tr></thead>
+        <tbody>
+          {% for s in strategies %}
+            <tr><td>{{ s.name }}</td><td>{{ s.min_days_overdue }}</td><td>{{ s.max_days_overdue }}</td><td>{{ s.reminder_cadence_days }}</td><td>{{ s.settlement_discount_pct }}</td><td>{{ 'Yes' if s.hardship_enabled else 'No' }}</td></tr>
+          {% else %}
+            <tr><td colspan="6">No strategies configured.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <h2 class="mtop">Generated Actions</h2>
+    <div class="table-wrap table-readable">
+      <table>
+        <thead><tr><th>ID</th><th>Application</th><th>Ledger</th><th>Strategy</th><th>Type</th><th>Status</th><th>Payload</th></tr></thead>
+        <tbody>
+          {% for a in actions %}
+            <tr><td>{{ a.id }}</td><td>{{ a.application_id }}</td><td>{{ a.ledger_id }}</td><td>{{ a.strategy_name }}</td><td>{{ a.action_type }}</td><td>{{ a.status }}</td><td>{{ a.action_payload }}</td></tr>
+          {% else %}
+            <tr><td colspan="7">No collection actions yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
+{% endblock %}

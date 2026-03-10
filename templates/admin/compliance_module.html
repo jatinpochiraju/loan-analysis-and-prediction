@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block title %}Compliance | LoanShield{% endblock %}
+{% block body %}
+<main class="page admin-page">
+  <section class="panel">
+    <h1>Compliance Module</h1>
+    <p class="small-muted">Retention rules, consents, and right-to-delete/export event tracking.</p>
+    <form method="post" class="form-grid">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label><span>Event Type</span><input name="event_type" value="EXPORT_REQUEST"></label>
+      <label><span>Target User ID</span><input type="number" name="target_user_id" value="1"></label>
+      <label class="wide"><span>Payload</span><input name="payload" value='{"scope":"all"}'></label>
+      <button class="btn" type="submit">Record Compliance Event</button>
+    </form>
+    <h2 class="mtop">Retention Policies</h2>
+    <div class="table-wrap table-readable"><table><thead><tr><th>Data Type</th><th>Days</th><th>Active</th></tr></thead><tbody>{% for p in policies %}<tr><td>{{ p.data_type }}</td><td>{{ p.retention_days }}</td><td>{{ p.is_active }}</td></tr>{% else %}<tr><td colspan="3">No policies.</td></tr>{% endfor %}</tbody></table></div>
+    <h2 class="mtop">Compliance Events</h2>
+    <div class="table-wrap table-readable"><table><thead><tr><th>ID</th><th>User</th><th>Type</th><th>Status</th><th>Payload</th><th>Created</th></tr></thead><tbody>{% for e in events %}<tr><td>{{ e.id }}</td><td>{{ e.user_id }}</td><td>{{ e.event_type }}</td><td>{{ e.status }}</td><td>{{ e.payload }}</td><td>{{ e.created_at }}</td></tr>{% else %}<tr><td colspan="6">No events.</td></tr>{% endfor %}</tbody></table></div>
+    <h2 class="mtop">Consent Records</h2>
+    <div class="table-wrap table-readable"><table><thead><tr><th>ID</th><th>User</th><th>Type</th><th>Value</th><th>Recorded</th></tr></thead><tbody>{% for c in consents %}<tr><td>{{ c.id }}</td><td>{{ c.user_id }}</td><td>{{ c.consent_type }}</td><td>{{ c.consent_value }}</td><td>{{ c.recorded_at }}</td></tr>{% else %}<tr><td colspan="5">No records.</td></tr>{% endfor %}</tbody></table></div>
+  </section>
+</main>
+{% endblock %}

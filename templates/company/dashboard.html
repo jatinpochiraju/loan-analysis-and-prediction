@@ -1,0 +1,130 @@
+{% extends 'base.html' %}
+{% block title %}Company Workspace | LoanShield{% endblock %}
+{% block body %}
+<main class="page admin-page">
+  <section class="panel">
+    <h1>Small-Scale Lender Workspace</h1>
+    <p class="small-muted">Organize your lending process with controlled access to entity design, typelists, and extension mappings.</p>
+    <div class="metric-cards command-cards">
+      <article><span>Total Loans</span><strong>{{ totals.total or 0 }}</strong></article>
+      <article><span>Approved</span><strong>{{ totals.approved or 0 }}</strong></article>
+      <article><span>Manual Review</span><strong>{{ totals.manual or 0 }}</strong></article>
+      <article><span>Rejected</span><strong>{{ totals.rejected or 0 }}</strong></article>
+      <article><span>Avg Requested</span><strong>${{ '%.0f'|format(totals.avg_requested or 0) }}</strong></article>
+      <article><span>Your Entities</span><strong>{{ visual.entity_count }}</strong></article>
+    </div>
+  </section>
+
+  <section class="panel wide">
+    <h2>Loan Process by Product</h2>
+    <div class="table-wrap table-readable">
+      <table>
+        <thead><tr><th>Product</th><th>Volume</th><th>Avg Approval Probability</th></tr></thead>
+        <tbody>
+          {% for p in by_product %}
+            <tr><td>{{ p.product_code }}</td><td>{{ p.total }}</td><td>{{ '%.1f'|format((p.avg_prob or 0) * 100) }}%</td></tr>
+          {% else %}
+            <tr><td colspan="3">No loan data available.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Create Entity</h2>
+    <form method="post" action="{{ url_for('company_create_entity') }}" class="form-grid">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label><span>Entity Name</span><input name="name" required></label>
+      <label><span>Supertype</span><input name="supertype"></label>
+      <label><span>Subtype</span><input name="subtype"></label>
+      <label class="full-width"><span>Description</span><input name="description" maxlength="180"></label>
+      <button class="btn" type="submit">Create Entity</button>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>Create Typelist/Typecode</h2>
+    <form method="post" action="{{ url_for('company_create_typelist') }}" class="form-grid">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label><span>Typelist Name</span><input name="name" required></label>
+      <label><span>Initial Typecode</span><input name="code"></label>
+      <label><span>Display Name</span><input name="display_name"></label>
+      <label class="full-width"><span>Description</span><input name="description" maxlength="180"></label>
+      <button class="btn" type="submit">Save Typelist</button>
+    </form>
+  </section>
+
+  <section class="panel wide">
+    <h2>Extend Entity (EIX/ETX)</h2>
+    <form method="post" action="{{ url_for('company_extend_entity') }}" class="form-grid">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label><span>Entity Name</span><input name="entity_name" required></label>
+      <label><span>Field Name</span><input name="field_name" required></label>
+      <label>
+        <span>Extension Type</span>
+        <select name="extension_type"><option value="EIX">EIX</option><option value="ETX">ETX</option></select>
+      </label>
+      <label>
+        <span>Field Type</span>
+        <select name="field_type">
+          <option value="string">string</option><option value="int">int</option><option value="float">float</option>
+          <option value="decimal">decimal</option><option value="bool">bool</option><option value="date">date</option>
+          <option value="datetime">datetime</option><option value="createdtime">createdtime</option>
+          <option value="entity_ref">entity_ref</option><option value="array">array</option>
+        </select>
+      </label>
+      <label>
+        <span>Relation Type</span>
+        <select name="relation_type">
+          <option value="none">none</option><option value="one_to_one">one_to_one</option><option value="one_to_many">one_to_many</option>
+          <option value="foreign_key">foreign_key</option><option value="array">array</option><option value="circular">circular</option>
+        </select>
+      </label>
+      <label><span>Related Entity</span><input name="related_entity"></label>
+      <label><span>Foreign Key Field</span><input name="foreign_key_field"></label>
+      <label><span>Typelist Name</span><input name="typelist_name"></label>
+      <label class="full-width"><span>Description</span><input name="description" maxlength="180"></label>
+      <label class="checkbox-row"><input type="checkbox" name="is_array"> Array Relation</label>
+      <label class="checkbox-row"><input type="checkbox" name="is_circular"> Circular Relation</label>
+      <label class="checkbox-row"><input type="checkbox" name="nullable" checked> Nullable</label>
+      <button class="btn" type="submit">Save Extension</button>
+    </form>
+  </section>
+
+  <section class="panel wide">
+    <div class="row-between">
+      <h2>Visual Diagrams</h2>
+      <a class="btn ghost" href="{{ url_for('model_visualizer') }}">Open Full Visualizer</a>
+    </div>
+    <canvas id="companyExtChart" width="680" height="220"></canvas>
+  </section>
+</main>
+<script>
+  (function () {
+    const extData = {{ visual.ext_counts|tojson }};
+    const c = document.getElementById("companyExtChart");
+    if (!c) return;
+    const ctx = c.getContext("2d");
+    const labels = Object.keys(extData);
+    const vals = labels.map(k => Number(extData[k] || 0));
+    const max = Math.max(1, ...vals);
+    const W = c.width, H = c.height, pad = 36;
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = "#f8f9fc";
+    ctx.fillRect(0, 0, W, H);
+    const bw = Math.max(28, Math.floor((W - pad * 2) / Math.max(1, labels.length) - 14));
+    labels.forEach((label, i) => {
+      const x = pad + i * (bw + 14);
+      const h = Math.floor((vals[i] / max) * (H - pad * 2));
+      const y = H - pad - h;
+      ctx.fillStyle = "#1b6fd8";
+      ctx.fillRect(x, y, bw, h);
+      ctx.fillStyle = "#1f2330";
+      ctx.font = "12px IBM Plex Sans, sans-serif";
+      ctx.fillText(label, x, H - 14);
+      ctx.fillText(String(vals[i]), x + 4, y - 6);
+    });
+  })();
+</script>
+{% endblock %}

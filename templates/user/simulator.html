@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+{% block title %}Loan Simulator | LoanShield{% endblock %}
+{% block body %}
+<main class="page dash-grid">
+  <section class="panel form-panel">
+    <h1>Loan Comparison Simulator</h1>
+    <form method="post" class="form-grid">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label><span>Loan Product</span><select name="product_code">{% for p in products %}<option value="{{ p.code }}">{{ p.code }}</option>{% endfor %}</select></label>
+      <label><span>Region</span><select name="region">{% for region in regions %}<option value="{{ region }}">{{ region }}</option>{% endfor %}</select></label>
+      <label><span>KYC ID Number</span><input name="kyc_id_number" value="SIMKYC123"></label>
+      <label><span>Income Document Ref</span><input name="income_doc_ref" value="SIMDOC001"></label>
+      <label><span>Current Salary</span><input type="number" name="current_salary" required></label>
+      <label><span>Monthly Expenditure</span><input type="number" name="monthly_expenditure" required></label>
+      <label><span>Existing EMI</span><input type="number" name="existing_emi" required></label>
+      <label><span>Requested Amount</span><input type="number" name="requested_amount" required></label>
+      <label><span>Term (months)</span><input type="number" name="loan_term_months" required></label>
+      <label><span>Employment Years</span><input type="number" step="0.1" name="employment_years" required></label>
+      <label><span>Credit Score</span><input type="number" name="credit_score" required></label>
+      <label><span>Collateral Value</span><input type="number" name="collateral_value" required></label>
+      <label><span>Prepayment Amount</span><input type="number" name="prepayment_amount" min="0" value="0"></label>
+      <label><span>Prepayment Month</span><input type="number" name="prepayment_month" min="0" value="0"></label>
+      <label><span>Refinance Rate (%)</span><input type="number" step="0.01" name="refinance_rate" min="0" placeholder="Optional"></label>
+      <button class="btn" type="submit">Simulate</button>
+    </form>
+  </section>
+  <section class="panel stats-panel">
+    <h2>Simulation Output</h2>
+    {% if result %}
+      <div class="metric-cards command-cards">
+        <article><span>Status</span><strong>{{ result.status }}</strong></article>
+        <article><span>Tier</span><strong>{{ result.tier }}</strong></article>
+        <article><span>Risk Score</span><strong>{{ result.risk_score }}</strong></article>
+        <article><span>Approval Prob.</span><strong>{{ '%.1f'|format(result.approval_probability * 100) }}%</strong></article>
+        <article><span>Interest Rate</span><strong>{{ '%.2f'|format(result.interest_rate * 100) }}%</strong></article>
+        <article><span>EMI</span><strong>${{ '%.2f'|format(result.monthly_payment_est) }}</strong></article>
+      </div>
+    {% else %}
+      <p>Run a simulation to compare outcomes before submitting a formal application.</p>
+    {% endif %}
+    {% if repayment %}
+      <h2 class="mtop">Repayment Scenarios</h2>
+      <div class="metric-cards command-cards">
+        <article><span>Baseline EMI</span><strong>${{ '%.2f'|format(repayment.baseline_emi) }}</strong></article>
+        <article><span>Baseline Interest (Est.)</span><strong>${{ '%.2f'|format(repayment.baseline_interest_est) }}</strong></article>
+        <article><span>Months Saved</span><strong>{{ repayment.months_saved }}</strong></article>
+        <article><span>Interest Saved (Est.)</span><strong>${{ '%.2f'|format(repayment.interest_saved_est) }}</strong></article>
+        <article><span>Refinance EMI</span><strong>${{ '%.2f'|format(repayment.refinance_emi) }}</strong></article>
+        <article><span>Refinance Monthly Saving</span><strong>${{ '%.2f'|format(repayment.refinance_saving_monthly) }}</strong></article>
+      </div>
+    {% endif %}
+  </section>
+</main>
+{% endblock %}
