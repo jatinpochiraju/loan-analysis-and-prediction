@@ -19,6 +19,59 @@ A comprehensive, secure, Guidewire-inspired loan platform with:
 - integration-ready outbound notifications (`notification_events`) for SMTP/SendGrid email
 - guarded chatbot (`/chatbot`) with SQL chat logs (`chat_messages`)
 
+## Project Screenshots
+
+The screenshots are stored in:
+
+```text
+generated_docs/kyc_ocr_samples/screenshots/
+```
+
+Each screenshot has been renamed to describe what it shows instead of using timestamp-style names.
+
+| Screenshot | File |
+|---|---|
+| Home landing page and suite module overview | `screenshots/01_home_landing_suite_overview.png` |
+| User login page with borrower credentials | `screenshots/02_user_login_credentials.png` |
+| User login form close-up | `screenshots/03_user_login_form.png` |
+| User PolicyCenter dashboard and loan application form | `screenshots/04_user_policycenter_dashboard.png` |
+| Mock KYC and document upload journey | `screenshots/05_kyc_document_journey.png` |
+| Loan comparison simulator | `screenshots/06_loan_comparison_simulator.png` |
+
+### Home Landing Page
+
+![LoanShield home landing page and suite modules](screenshots/01_home_landing_suite_overview.png)
+
+The landing page shows the LoanShield Insurance Suite overview, including entry points for account creation, user login, admin login, and major modules such as PolicyCenter, BillingCenter, ClaimCenter, and DataHub.
+
+### User Login
+
+![User login page with borrower credentials](screenshots/02_user_login_credentials.png)
+
+The borrower login page gives applicants access to loan workflows, dashboards, and KYC journeys.
+
+![User login form close-up](screenshots/03_user_login_form.png)
+
+This close-up shows the same user authentication form with username, password, and sign-in action.
+
+### User PolicyCenter Dashboard
+
+![User PolicyCenter dashboard and loan application form](screenshots/04_user_policycenter_dashboard.png)
+
+The user dashboard includes the new loan application form, product and policy selections, salary and EMI inputs, calculated credit score, and personal application insights.
+
+### Mock KYC + Document Journey
+
+![Mock KYC and document upload journey](screenshots/05_kyc_document_journey.png)
+
+The KYC journey captures personal details, employment details, document upload, OCR verification, risk review, and final advisory decision progress.
+
+### Loan Comparison Simulator
+
+![Loan comparison simulator form and output panel](screenshots/06_loan_comparison_simulator.png)
+
+The simulator lets users compare possible loan outcomes before submitting a formal loan application.
+
 ## Key Capabilities
 
 ## 1) Loan Assessment + Prediction + Approval
@@ -208,6 +261,34 @@ Integration test env helpers:
   - User page `/user/mobile`, with `static/manifest.webmanifest` and `static/sw.js`.
 - Chatbot hardening (`/chatbot`):
   - Retrieval over policy docs, stricter prompt guardrails, full SQL audit log.
+
+## KYC OCR Sample Documents
+
+This folder also contains ready-to-upload KYC OCR sample PDFs for testing `/user/kyc-onboarding`.
+
+For best OCR verification results, fill the KYC onboarding profile with these values first:
+
+- Full Name: Arjun Mehta
+- PAN Number: ABCDE1234F
+- Company Name: FinEdge Analytics Pvt Ltd
+- Designation: Software Engineer
+- Years of Experience: 3
+- Monthly Salary: 85000
+- Requested Loan: 600000
+- Existing EMI: 12000
+
+Upload mapping:
+
+| Dropdown Document Type | File |
+|---|---|
+| PAN Card | `01_pan_card_arjun_mehta.pdf` |
+| Salary Slip 1 | `02_salary_slip_1_april_2026.pdf` |
+| Salary Slip 2 | `03_salary_slip_2_march_2026.pdf` |
+| Salary Slip 3 | `04_salary_slip_3_february_2026.pdf` |
+| Joining Letter | `05_joining_letter_finedge.pdf` |
+| Bank Statement (6 months) | `06_bank_statement_6_months.pdf` |
+
+PDF versions are ready for upload. The `.txt` files are kept as editable source fixtures. The OCR simulation extracts text from uploaded PDFs using `pdftotext` before applying the existing KYC verification parser.
 
 ## Project Structure
 
