@@ -17,7 +17,7 @@ def load_env_file(path: str = ".env") -> None:
 
 load_env_file()
 
-from loansuite import create_app
+from loanshield import create_app
 
 app = create_app()
 

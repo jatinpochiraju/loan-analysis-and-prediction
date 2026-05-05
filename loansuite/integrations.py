@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+import smtplib
+import ssl
+from email.message import EmailMessage
 from typing import Any, Dict
 
 try:
@@ -16,8 +19,8 @@ def _simulate_enabled() -> bool:
 
 def integration_status() -> Dict[str, bool]:
     return {
+        "smtp": bool(os.getenv("SMTP_HOST") and os.getenv("SMTP_PORT") and os.getenv("SMTP_USER") and os.getenv("SMTP_PASS")),
         "sendgrid": bool(os.getenv("SENDGRID_API_KEY")),
-        "twilio": bool(os.getenv("TWILIO_ACCOUNT_SID") and os.getenv("TWILIO_AUTH_TOKEN")),
         "stripe": bool(os.getenv("STRIPE_API_KEY")),
         "kyc": bool(os.getenv("KYC_API_KEY")),
         "mapbox": bool(os.getenv("MAPBOX_API_KEY")),
@@ -59,6 +62,28 @@ def gemini_chat(prompt: str, system_context: str = "") -> Dict[str, Any]:
 
 
 def send_email(recipient: str, subject: str, message: str) -> Dict[str, Any]:
+    smtp_host = os.getenv("SMTP_HOST", "").strip()
+    smtp_port = int(os.getenv("SMTP_PORT", "0") or 0)
+    smtp_user = os.getenv("SMTP_USER", "").strip()
+    smtp_pass = os.getenv("SMTP_PASS", "").strip()
+    if smtp_host and smtp_port and smtp_user and smtp_pass:
+        email = EmailMessage()
+        email["From"] = smtp_user
+        email["To"] = recipient
+        email["Subject"] = subject
+        email.set_content(message)
+        try:
+            context = ssl.create_default_context()
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
+                server.ehlo()
+                server.starttls(context=context)
+                server.ehlo()
+                server.login(smtp_user, smtp_pass)
+                server.send_message(email)
+            return {"ok": True, "provider": "smtp"}
+        except Exception as exc:
+            return {"ok": False, "provider": "smtp", "reason": str(exc)}
+
     key = os.getenv("SENDGRID_API_KEY")
     sender = os.getenv("SENDGRID_FROM_EMAIL", "noreply@loanshield.local")
     if not key or not requests:
@@ -82,27 +107,6 @@ def send_email(recipient: str, subject: str, message: str) -> Dict[str, Any]:
         return {"ok": resp.status_code < 300, "provider": "sendgrid", "status_code": resp.status_code}
     except Exception as exc:
         return {"ok": False, "provider": "sendgrid", "reason": str(exc)}
-
-
-def send_sms(phone: str, message: str) -> Dict[str, Any]:
-    sid = os.getenv("TWILIO_ACCOUNT_SID")
-    token = os.getenv("TWILIO_AUTH_TOKEN")
-    from_phone = os.getenv("TWILIO_FROM_PHONE")
-    if not sid or not token or not from_phone or not requests:
-        if _simulate_enabled():
-            return {"ok": True, "provider": "twilio-simulated", "reason": "simulated_delivery"}
-        return {"ok": False, "provider": "twilio", "reason": "missing_api_or_requests"}
-    try:
-        url = f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json"
-        resp = requests.post(
-            url,
-            data={"From": from_phone, "To": phone, "Body": message},
-            auth=(sid, token),
-            timeout=8,
-        )
-        return {"ok": resp.status_code < 300, "provider": "twilio", "status_code": resp.status_code}
-    except Exception as exc:
-        return {"ok": False, "provider": "twilio", "reason": str(exc)}
 
 
 def create_payment_intent(amount: float, currency: str = "usd") -> Dict[str, Any]:
@@ -154,22 +158,14 @@ def address_validate(address_text: str) -> Dict[str, Any]:
 def integration_smoke_report() -> Dict[str, Dict[str, Any]]:
     flags = integration_status()
     report: Dict[str, Dict[str, Any]] = {}
-    report["sendgrid"] = {
-        "configured": flags["sendgrid"],
+    report["smtp_email"] = {
+        "configured": flags["smtp"] or flags["sendgrid"],
         "mode": "live" if os.getenv("TEST_EMAIL_RECIPIENT") else "config-only",
         "result": send_email(
             os.getenv("TEST_EMAIL_RECIPIENT", "nobody@example.local"),
             "LoanShield Integration Test",
-            "SendGrid integration test message.",
-        ) if flags["sendgrid"] and os.getenv("TEST_EMAIL_RECIPIENT") else {"ok": flags["sendgrid"], "reason": "set TEST_EMAIL_RECIPIENT for live check"},
-    }
-    report["twilio"] = {
-        "configured": flags["twilio"],
-        "mode": "live" if os.getenv("TEST_SMS_TO") else "config-only",
-        "result": send_sms(
-            os.getenv("TEST_SMS_TO", "+10000000000"),
-            "LoanShield Twilio integration test.",
-        ) if flags["twilio"] and os.getenv("TEST_SMS_TO") else {"ok": flags["twilio"], "reason": "set TEST_SMS_TO for live check"},
+            "SMTP integration test message.",
+        ) if (flags["smtp"] or flags["sendgrid"]) and os.getenv("TEST_EMAIL_RECIPIENT") else {"ok": flags["smtp"] or flags["sendgrid"], "reason": "set TEST_EMAIL_RECIPIENT for live check"},
     }
     report["stripe"] = {
         "configured": flags["stripe"],

@@ -12,7 +12,6 @@
     <form method="post" action="{{ url_for('admin_integration_test_run') }}" class="form-grid" style="margin-top:0.6rem;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label><span>Test Email Recipient</span><input name="test_email" placeholder="you@example.com"></label>
-      <label><span>Test SMS Recipient</span><input name="test_sms" placeholder="+15551234567"></label>
       <button class="btn" type="submit">Run Test Notification</button>
     </form>
 

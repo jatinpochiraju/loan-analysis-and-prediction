@@ -14,9 +14,9 @@
       </div>
     </div>
     <div class="metric-cards command-cards" style="margin-top:0.7rem;">
-      <article><span>Total Disbursed</span><strong>${{ '%.2f'|format(totals.disbursed or 0) }}</strong></article>
-      <article><span>Open EMI</span><strong>${{ '%.2f'|format(totals.open_emi or 0) }}</strong></article>
-      <article><span>Total Late Fees</span><strong>${{ '%.2f'|format(totals.total_fees or 0) }}</strong></article>
+      <article><span>Total Disbursed</span><strong>{{ '%.2f'|format(totals.disbursed or 0) }}</strong></article>
+      <article><span>Open EMI</span><strong>{{ '%.2f'|format(totals.open_emi or 0) }}</strong></article>
+      <article><span>Total Late Fees</span><strong>{{ '%.2f'|format(totals.total_fees or 0) }}</strong></article>
       <article><span>Overdue Entries</span><strong>{{ totals.overdue_entries or 0 }}</strong></article>
     </div>
 
@@ -33,7 +33,7 @@
               <td>{{ row.id }}</td>
               <td>{{ row.application_id }}</td>
               <td>{{ row.txn_type }}</td>
-              <td>${{ '%.2f'|format(row.amount or 0) }}</td>
+              <td>{{ '%.2f'|format(row.amount or 0) }}</td>
               <td>{{ '%.2f'|format(row.principal_delta or 0) }}</td>
               <td>{{ '%.2f'|format(row.interest_delta or 0) }}</td>
               <td>{{ '%.2f'|format(row.fee_delta or 0) }}</td>

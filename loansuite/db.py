@@ -264,6 +264,93 @@ def init_db(db_path: str):
         )
         ensure_table_shape(
             conn,
+            "kyc_cases",
+            {
+                "id",
+                "user_id",
+                "application_id",
+                "onboarding_step",
+                "full_name",
+                "email",
+                "phone",
+                "pan_number",
+                "aadhaar_last4",
+                "company_name",
+                "designation",
+                "years_of_experience",
+                "monthly_salary",
+                "requested_loan",
+                "existing_emi",
+                "kyc_status",
+                "ocr_status",
+                "verification_score",
+                "risk_level",
+                "approval_status",
+                "eligible_amount",
+                "suggested_safer_amount",
+                "recommended_tenure_months",
+                "quality_label",
+                "cibil_band",
+                "cibil_explanation",
+                "status_flow",
+                "metadata",
+                "created_at",
+                "updated_at",
+            },
+        )
+        ensure_table_shape(
+            conn,
+            "kyc_case_documents",
+            {
+                "id",
+                "case_id",
+                "application_id",
+                "doc_type",
+                "file_name",
+                "storage_path",
+                "mime_type",
+                "extracted_text",
+                "parsed_fields",
+                "verification_score",
+                "mismatch_flags",
+                "quality_label",
+                "quality_details",
+                "status",
+                "created_at",
+            },
+        )
+        ensure_table_shape(
+            conn,
+            "underwriting_reviews",
+            {
+                "id",
+                "case_id",
+                "application_id",
+                "requested_amount",
+                "eligible_amount",
+                "suggested_safer_amount",
+                "safe_loan_amount",
+                "risk_level",
+                "approval_status",
+                "ocr_score",
+                "kyc_status",
+                "explanation",
+                "recommendation_confidence",
+                "created_at",
+            },
+        )
+        ensure_table_shape(
+            conn,
+            "mock_document_artifacts",
+            {"id", "case_id", "doc_type", "file_path", "checksum", "created_at"},
+        )
+        ensure_table_shape(
+            conn,
+            "decision_audit_ext",
+            {"id", "case_id", "application_id", "action", "actor", "remarks", "status_flow", "created_at"},
+        )
+        ensure_table_shape(
+            conn,
             "collection_strategies",
             {"id", "name", "min_days_overdue", "max_days_overdue", "reminder_cadence_days", "settlement_discount_pct", "hardship_enabled", "is_active", "created_at"},
         )
@@ -440,6 +527,21 @@ def init_db(db_path: str):
                 expires_at TEXT NOT NULL,
                 attempts INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS login_email_challenges (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER UNIQUE NOT NULL,
+                username TEXT NOT NULL,
+                email TEXT NOT NULL,
+                email_otp_hash TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(user_id) REFERENCES users(id)
             )
             """
         )
@@ -887,6 +989,118 @@ def init_db(db_path: str):
         )
         conn.execute(
             """
+            CREATE TABLE IF NOT EXISTS kyc_cases (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                application_id INTEGER,
+                onboarding_step INTEGER NOT NULL DEFAULT 1,
+                full_name TEXT NOT NULL DEFAULT '',
+                email TEXT NOT NULL DEFAULT '',
+                phone TEXT NOT NULL DEFAULT '',
+                pan_number TEXT NOT NULL DEFAULT '',
+                aadhaar_last4 TEXT NOT NULL DEFAULT '',
+                company_name TEXT NOT NULL DEFAULT '',
+                designation TEXT NOT NULL DEFAULT '',
+                years_of_experience REAL NOT NULL DEFAULT 0,
+                monthly_salary REAL NOT NULL DEFAULT 0,
+                requested_loan REAL NOT NULL DEFAULT 0,
+                existing_emi REAL NOT NULL DEFAULT 0,
+                kyc_status TEXT NOT NULL DEFAULT 'pending',
+                ocr_status TEXT NOT NULL DEFAULT 'pending',
+                verification_score REAL NOT NULL DEFAULT 0,
+                risk_level TEXT NOT NULL DEFAULT 'Low',
+                approval_status TEXT NOT NULL DEFAULT 'pending',
+                eligible_amount REAL NOT NULL DEFAULT 0,
+                suggested_safer_amount REAL NOT NULL DEFAULT 0,
+                recommended_tenure_months INTEGER NOT NULL DEFAULT 48,
+                quality_label TEXT NOT NULL DEFAULT 'good',
+                cibil_band TEXT NOT NULL DEFAULT 'unavailable',
+                cibil_explanation TEXT NOT NULL DEFAULT '',
+                status_flow TEXT NOT NULL DEFAULT 'submitted',
+                metadata TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY(user_id) REFERENCES users(id),
+                FOREIGN KEY(application_id) REFERENCES loan_applications(id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS kyc_case_documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                case_id INTEGER NOT NULL,
+                application_id INTEGER,
+                doc_type TEXT NOT NULL,
+                file_name TEXT NOT NULL,
+                storage_path TEXT,
+                mime_type TEXT,
+                extracted_text TEXT NOT NULL DEFAULT '',
+                parsed_fields TEXT NOT NULL DEFAULT '{}',
+                verification_score REAL NOT NULL DEFAULT 0,
+                mismatch_flags TEXT NOT NULL DEFAULT '[]',
+                quality_label TEXT NOT NULL DEFAULT 'good',
+                quality_details TEXT NOT NULL DEFAULT '{}',
+                status TEXT NOT NULL DEFAULT 'pending',
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(case_id) REFERENCES kyc_cases(id),
+                FOREIGN KEY(application_id) REFERENCES loan_applications(id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS underwriting_reviews (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                case_id INTEGER NOT NULL,
+                application_id INTEGER,
+                requested_amount REAL NOT NULL,
+                eligible_amount REAL NOT NULL,
+                suggested_safer_amount REAL NOT NULL,
+                safe_loan_amount REAL NOT NULL,
+                risk_level TEXT NOT NULL,
+                approval_status TEXT NOT NULL,
+                ocr_score REAL NOT NULL DEFAULT 0,
+                kyc_status TEXT NOT NULL DEFAULT 'pending',
+                explanation TEXT NOT NULL DEFAULT '',
+                recommendation_confidence REAL NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(case_id) REFERENCES kyc_cases(id),
+                FOREIGN KEY(application_id) REFERENCES loan_applications(id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS mock_document_artifacts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                case_id INTEGER NOT NULL,
+                doc_type TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                checksum TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(case_id) REFERENCES kyc_cases(id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS decision_audit_ext (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                case_id INTEGER,
+                application_id INTEGER,
+                action TEXT NOT NULL,
+                actor TEXT NOT NULL,
+                remarks TEXT,
+                status_flow TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(case_id) REFERENCES kyc_cases(id),
+                FOREIGN KEY(application_id) REFERENCES loan_applications(id)
+            )
+            """
+        )
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS collection_strategies (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT UNIQUE NOT NULL,
@@ -1246,6 +1460,11 @@ def init_db(db_path: str):
         conn.execute("CREATE INDEX IF NOT EXISTS idx_workflow_app ON workflow_tasks(application_id, status)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_workflow_sla ON workflow_tasks(sla_due_at, status)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_docintel_app ON document_intelligence(application_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_kyc_cases_user ON kyc_cases(user_id, updated_at DESC)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_kyc_cases_status ON kyc_cases(kyc_status, approval_status)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_kyc_docs_case ON kyc_case_documents(case_id, created_at DESC)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_underwriting_case ON underwriting_reviews(case_id, created_at DESC)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_decision_audit_case ON decision_audit_ext(case_id, created_at DESC)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_collection_actions_app ON collection_actions(application_id, status)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_recon_status ON payment_reconciliation(status, last_attempt_at)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_consent_user ON consent_records(user_id, recorded_at DESC)")
@@ -1262,6 +1481,7 @@ def init_db(db_path: str):
         conn.execute("CREATE INDEX IF NOT EXISTS idx_cfg_releases_type ON config_releases(release_type, published_at DESC)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_event_stream_time ON integration_event_stream(created_at DESC)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_signup_2fa_expires ON signup_2fa_challenges(expires_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_login_email_expires ON login_email_challenges(expires_at)")
 
         ensure_missing_columns(
             conn,
@@ -1311,6 +1531,98 @@ def init_db(db_path: str):
                 "is_circular": "INTEGER NOT NULL DEFAULT 0",
             },
         )
+        ensure_missing_columns(
+            conn,
+            "document_intelligence",
+            {
+                "extracted_text": "TEXT NOT NULL DEFAULT ''",
+                "parsed_fields_json": "TEXT NOT NULL DEFAULT '{}'",
+                "verification_score": "REAL NOT NULL DEFAULT 0",
+                "mismatch_flags_json": "TEXT NOT NULL DEFAULT '[]'",
+                "quality_label": "TEXT NOT NULL DEFAULT 'good'",
+                "quality_details": "TEXT NOT NULL DEFAULT '{}'",
+            },
+        )
+        ensure_missing_columns(
+            conn,
+            "kyc_cases",
+            {
+                "application_id": "INTEGER",
+                "onboarding_step": "INTEGER NOT NULL DEFAULT 1",
+                "full_name": "TEXT NOT NULL DEFAULT ''",
+                "email": "TEXT NOT NULL DEFAULT ''",
+                "phone": "TEXT NOT NULL DEFAULT ''",
+                "pan_number": "TEXT NOT NULL DEFAULT ''",
+                "aadhaar_last4": "TEXT NOT NULL DEFAULT ''",
+                "company_name": "TEXT NOT NULL DEFAULT ''",
+                "designation": "TEXT NOT NULL DEFAULT ''",
+                "years_of_experience": "REAL NOT NULL DEFAULT 0",
+                "monthly_salary": "REAL NOT NULL DEFAULT 0",
+                "requested_loan": "REAL NOT NULL DEFAULT 0",
+                "existing_emi": "REAL NOT NULL DEFAULT 0",
+                "kyc_status": "TEXT NOT NULL DEFAULT 'pending'",
+                "ocr_status": "TEXT NOT NULL DEFAULT 'pending'",
+                "verification_score": "REAL NOT NULL DEFAULT 0",
+                "risk_level": "TEXT NOT NULL DEFAULT 'Low'",
+                "approval_status": "TEXT NOT NULL DEFAULT 'pending'",
+                "eligible_amount": "REAL NOT NULL DEFAULT 0",
+                "suggested_safer_amount": "REAL NOT NULL DEFAULT 0",
+                "recommended_tenure_months": "INTEGER NOT NULL DEFAULT 48",
+                "quality_label": "TEXT NOT NULL DEFAULT 'good'",
+                "cibil_band": "TEXT NOT NULL DEFAULT 'unavailable'",
+                "cibil_explanation": "TEXT NOT NULL DEFAULT ''",
+                "status_flow": "TEXT NOT NULL DEFAULT 'submitted'",
+                "metadata": "TEXT NOT NULL DEFAULT '{}'",
+                "created_at": "TEXT NOT NULL DEFAULT ''",
+                "updated_at": "TEXT NOT NULL DEFAULT ''",
+            },
+        )
+        ensure_missing_columns(
+            conn,
+            "kyc_case_documents",
+            {
+                "application_id": "INTEGER",
+                "storage_path": "TEXT",
+                "mime_type": "TEXT",
+                "extracted_text": "TEXT NOT NULL DEFAULT ''",
+                "parsed_fields": "TEXT NOT NULL DEFAULT '{}'",
+                "verification_score": "REAL NOT NULL DEFAULT 0",
+                "mismatch_flags": "TEXT NOT NULL DEFAULT '[]'",
+                "quality_label": "TEXT NOT NULL DEFAULT 'good'",
+                "quality_details": "TEXT NOT NULL DEFAULT '{}'",
+                "status": "TEXT NOT NULL DEFAULT 'pending'",
+                "created_at": "TEXT NOT NULL DEFAULT ''",
+            },
+        )
+        ensure_missing_columns(
+            conn,
+            "underwriting_reviews",
+            {
+                "application_id": "INTEGER",
+                "safe_loan_amount": "REAL NOT NULL DEFAULT 0",
+                "ocr_score": "REAL NOT NULL DEFAULT 0",
+                "kyc_status": "TEXT NOT NULL DEFAULT 'pending'",
+                "explanation": "TEXT NOT NULL DEFAULT ''",
+                "recommendation_confidence": "REAL NOT NULL DEFAULT 0",
+                "created_at": "TEXT NOT NULL DEFAULT ''",
+            },
+        )
+        ensure_missing_columns(
+            conn,
+            "mock_document_artifacts",
+            {
+                "created_at": "TEXT NOT NULL DEFAULT ''",
+            },
+        )
+        ensure_missing_columns(
+            conn,
+            "decision_audit_ext",
+            {
+                "remarks": "TEXT",
+                "status_flow": "TEXT NOT NULL DEFAULT 'submitted'",
+                "created_at": "TEXT NOT NULL DEFAULT ''",
+            },
+        )
         conn.execute(
             """
             UPDATE loan_applications
@@ -1335,6 +1647,19 @@ def init_db(db_path: str):
                 ELSE COALESCE(NULLIF(access_level, ''), 'end_user')
             END
             """
+        )
+        conn.execute(
+            """
+            UPDATE kyc_cases
+            SET created_at = COALESCE(NULLIF(created_at, ''), ?),
+                updated_at = COALESCE(NULLIF(updated_at, ''), created_at, ?),
+                kyc_status = COALESCE(NULLIF(kyc_status, ''), 'pending'),
+                ocr_status = COALESCE(NULLIF(ocr_status, ''), 'pending'),
+                approval_status = COALESCE(NULLIF(approval_status, ''), 'pending'),
+                quality_label = COALESCE(NULLIF(quality_label, ''), 'good'),
+                status_flow = COALESCE(NULLIF(status_flow, ''), 'submitted')
+            """,
+            (utcnow(), utcnow()),
         )
         conn.execute(
             """

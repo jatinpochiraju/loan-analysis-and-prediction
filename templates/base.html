@@ -22,6 +22,7 @@
           <a href="{{ url_for('company_dashboard') }}">Company Workspace</a>
         {% else %}
           <a href="{{ url_for('user_dashboard') }}">PolicyCenter</a>
+          <a href="{{ url_for('user_kyc_onboarding') }}">KYC Journey</a>
           <a href="{{ url_for('user_profile') }}">Profile</a>
           <a href="{{ url_for('user_simulator') }}">Simulator</a>
           <a href="{{ url_for('user_digital_portal') }}">Digital Portal</a>
@@ -32,6 +33,8 @@
       {% endif %}
       {% if user_role == 'admin' %}
         <a href="{{ url_for('admin_dashboard') }}">AdminCenter</a>
+        <a href="{{ url_for('admin_kyc_dashboard') }}">KYC Dashboard</a>
+        <a href="{{ url_for('admin_underwriting_dashboard') }}">Underwriting</a>
         <a href="{{ url_for('company_dashboard') }}">Company Workspace</a>
         <a href="{{ url_for('model_visualizer') }}">Model Visualizer</a>
         <a href="{{ url_for('admin_modules') }}">Modules</a>

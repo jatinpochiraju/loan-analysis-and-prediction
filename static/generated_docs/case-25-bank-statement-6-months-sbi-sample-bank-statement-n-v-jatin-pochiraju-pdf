@@ -1,0 +1,78 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+2 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>
+endobj
+4 0 obj
+<< /Length 3787 >>
+stream
+0.22 0.43 0.77 rg 40 780 515 26 re f
+0.90 0.94 0.98 rg 40 742 515 28 re f
+0.95 0.97 1.0 rg 40 520 515 205 re f
+0.80 0.86 0.93 RG 1 w 40 520 515 205 re S
+0 0 0 rg
+BT /F2 18 Tf 50 793 Td 1 1 1 rg (STATE BANK OF INDIA) Tj ET
+BT /F1 10 Tf 50 769 Td 0.15 0.22 0.32 rg (Retail Assets Central Processing Centre) Tj ET
+BT /F1 10 Tf 50 755 Td 0.15 0.22 0.32 rg (Savings Account Statement) Tj ET
+BT /F1 10 Tf 50 741 Td 0.1 0.1 0.1 rg (Account Holder: N V Jatin Pochiraju) Tj ET
+BT /F1 10 Tf 50 727 Td 0.1 0.1 0.1 rg (Account Number: XXXX XXXX 4821) Tj ET
+BT /F1 10 Tf 50 713 Td 0.1 0.1 0.1 rg (Customer ID: 102948517) Tj ET
+BT /F1 10 Tf 50 699 Td 0.1 0.1 0.1 rg (Branch: Madhapur, Hyderabad) Tj ET
+BT /F1 10 Tf 50 685 Td 0.1 0.1 0.1 rg (IFSC: SBIN0000421) Tj ET
+BT /F1 10 Tf 50 671 Td 0.1 0.1 0.1 rg (Statement Period: 01-Jan-2026 to 30-Jun-2026) Tj ET
+BT /F1 10 Tf 50 657 Td 0.1 0.1 0.1 rg (Address: Hyderabad, Telangana, India) Tj ET
+BT /F2 12 Tf 50 633 Td 0.08 0.16 0.29 rg (Account Summary) Tj ET
+BT /F1 10 Tf 50 617 Td 0.1 0.1 0.1 rg (Opening Balance: INR 48,320.14) Tj ET
+BT /F1 10 Tf 50 603 Td 0.1 0.1 0.1 rg (Total Credits: INR 3,09,500.00) Tj ET
+BT /F1 10 Tf 50 589 Td 0.1 0.1 0.1 rg (Total Debits: INR 2,08,740.55) Tj ET
+BT /F1 10 Tf 50 575 Td 0.1 0.1 0.1 rg (Closing Balance: INR 1,49,079.59) Tj ET
+BT /F2 12 Tf 50 551 Td 0.08 0.16 0.29 rg (Recent Transactions) Tj ET
+BT /F3 9 Tf 50 535 Td 0.1 0.1 0.1 rg (Date        Description                              Debit        Credit       Balance) Tj ET
+BT /F3 9 Tf 50 523 Td 0.1 0.1 0.1 rg (03-Jan-26   SALARY CREDIT - TECHSYS INDIA PVT LTD                 51,500.00    99,820.14) Tj ET
+BT /F3 9 Tf 50 511 Td 0.1 0.1 0.1 rg (08-Jan-26   UPI/GROCERY MART                         3,240.00                 96,580.14) Tj ET
+BT /F3 9 Tf 50 499 Td 0.1 0.1 0.1 rg (14-Jan-26   ATM CASH WITHDRAWAL                      5,000.00                 91,580.14) Tj ET
+BT /F3 9 Tf 50 487 Td 0.1 0.1 0.1 rg (03-Feb-26   SALARY CREDIT - TECHSYS INDIA PVT LTD                 51,500.00   143,080.14) Tj ET
+BT /F3 9 Tf 50 475 Td 0.1 0.1 0.1 rg (09-Feb-26   RENT TRANSFER                           18,000.00                125,080.14) Tj ET
+BT /F3 9 Tf 50 463 Td 0.1 0.1 0.1 rg (18-Feb-26   ELECTRICITY BILL                         2,410.25                122,669.89) Tj ET
+BT /F3 9 Tf 50 451 Td 0.1 0.1 0.1 rg (03-Mar-26   SALARY CREDIT - TECHSYS INDIA PVT LTD                 51,500.00   174,169.89) Tj ET
+BT /F3 9 Tf 50 439 Td 0.1 0.1 0.1 rg (07-Mar-26   SIP AUTO-DEBIT                           5,000.00                169,169.89) Tj ET
+BT /F3 9 Tf 50 427 Td 0.1 0.1 0.1 rg (12-Apr-26   SALARY CREDIT - TECHSYS INDIA PVT LTD                 51,500.00   220,669.89) Tj ET
+BT /F3 9 Tf 50 415 Td 0.1 0.1 0.1 rg (19-Apr-26   CREDIT CARD PAYMENT                     22,540.30                198,129.59) Tj ET
+BT /F3 9 Tf 50 403 Td 0.1 0.1 0.1 rg (03-May-26   SALARY CREDIT - TECHSYS INDIA PVT LTD                 51,500.00   249,629.59) Tj ET
+BT /F3 9 Tf 50 391 Td 0.1 0.1 0.1 rg (10-May-26   INSURANCE PREMIUM                        4,800.00                244,829.59) Tj ET
+BT /F3 9 Tf 50 379 Td 0.1 0.1 0.1 rg (03-Jun-26   SALARY CREDIT - TECHSYS INDIA PVT LTD                 51,500.00   296,329.59) Tj ET
+BT /F3 9 Tf 50 367 Td 0.1 0.1 0.1 rg (24-Jun-26   HOME RENT TRANSFER                      18,000.00                278,329.59) Tj ET
+BT /F3 9 Tf 50 355 Td 0.1 0.1 0.1 rg (29-Jun-26   CARD POS / SUPERMARKET                   3,250.00                275,079.59) Tj ET
+BT /F1 8 Tf 50 333 Td 0.35 0.35 0.35 rg (This is a system-generated demo statement created for LoanShield document verification.) Tj ET
+BT /F1 8 Tf 50 322 Td 0.35 0.35 0.35 rg (SBI name and styling are used only for mock/demo representation and not as an official bank document.) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 6 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R /F2 2 0 R /F3 3 0 R >> >> /Contents 4 0 R >>
+endobj
+6 0 obj
+<< /Type /Pages /Count 1 /Kids [5 0 R] >>
+endobj
+7 0 obj
+<< /Type /Catalog /Pages 6 0 R >>
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000009 00000 n 
+0000000079 00000 n 
+0000000154 00000 n 
+0000000222 00000 n 
+0000004061 00000 n 
+0000004207 00000 n 
+0000004264 00000 n 
+trailer
+<< /Size 8 /Root 7 0 R >>
+startxref
+4313
+%%EOF

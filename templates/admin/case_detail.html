@@ -11,7 +11,7 @@
       <div class="metric-cards command-cards">
         <article><span>User</span><strong>{{ app_row.user_id }}</strong></article>
         <article><span>Region</span><strong>{{ app_row.region }}</strong></article>
-        <article><span>Requested</span><strong>${{ '%.0f'|format(app_row.requested_amount) }}</strong></article>
+        <article><span>Requested</span><strong>{{ '%.0f'|format(app_row.requested_amount) }}</strong></article>
         <article><span>Status</span><strong>{{ app_row.status }}</strong></article>
         <article><span>Tier</span><strong>{{ app_row.tier }}</strong></article>
         <article><span>Risk</span><strong>{{ app_row.risk_score }}</strong></article>

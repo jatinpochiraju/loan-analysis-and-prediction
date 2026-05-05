@@ -23,7 +23,6 @@ from .integrations import (
     integration_smoke_report,
     integration_status,
     send_email,
-    send_sms,
     verify_kyc_external,
 )
 from .security import (
@@ -40,34 +39,50 @@ from .security import (
     verify_password,
 )
 from .services import (
+    DOC_TYPE_ALIASES,
+    KYC_REQUIRED_DOCS,
+    KYC_STEP_LABELS,
     REGIONS,
     active_model_info,
     add_typelist_entry,
+    admin_case_decision,
     admin_insights,
     all_applications,
     append_chain,
+    bootstrap_mock_kyc_cases,
+    case_chat_context,
     create_entity_definition,
     create_invoice_and_commission,
     create_application,
     create_claim,
+    create_or_get_kyc_case,
     create_quote_for_application,
     create_or_update_entity_field,
     create_typelist,
     create_disbursement_and_schedule,
     issue_policy_for_application,
+    import_demo_document_pack,
     progress_claim,
     claims_overview,
     analytics_overview,
     calculate_fraud_signal,
     engagement_feed,
     generated_artifacts_summary,
+    generate_mock_documents_for_case,
+    generate_plan_comparisons,
     get_active_products,
     get_application,
     get_auth_security,
+    get_case_detail,
+    get_case_timeline,
     get_data_model,
     get_product_policy_by_code,
     get_product_policy_for_amount,
+    get_kyc_case_documents,
     historical_training_rows,
+    kyc_dashboard_overview,
+    list_kyc_cases_for_user,
+    log_case_audit,
     record_kyc_document_hash,
     record_login_failure,
     log_chat_message,
@@ -91,6 +106,7 @@ from .services import (
     create_policy_job,
     create_workflow_task,
     document_intelligence_feed,
+    derive_application_credit_score,
     explainability_for_application,
     fraud_graph_overview,
     model_monitoring_report,
@@ -116,6 +132,7 @@ from .services import (
     record_consent,
     retrieve_policy_guidance,
     rotate_client_api_key,
+    run_extended_underwriting,
     run_collection_strategy,
     run_document_intelligence,
     run_warehouse_export,
@@ -145,6 +162,10 @@ from .services import (
     add_policy_version,
     compare_policy_versions,
     transition_policy_job,
+    sync_case_with_application,
+    underwriting_dashboard_overview,
+    upload_kyc_case_document,
+    update_kyc_case_profile,
 )
 
 LOAN_TYPE_OPTIONS: List[Tuple[str, str]] = [
@@ -158,14 +179,7 @@ LOAN_TYPE_OPTIONS: List[Tuple[str, str]] = [
 SUPPORTED_LOAN_TYPES = {code for code, _ in LOAN_TYPE_OPTIONS}
 
 CURRENCY_OPTIONS: List[Tuple[str, str]] = [
-    ("USD", "US Dollar (USD)"),
     ("INR", "Indian Rupee (INR)"),
-    ("AUD", "Australian Dollar (AUD)"),
-    ("GBP", "Pound Sterling (GBP)"),
-    ("ZAR", "South African Rand (ZAR)"),
-    ("EUR", "Euro (EUR)"),
-    ("CNY", "Chinese Yuan (CNY)"),
-    ("THB", "Thai Baht (THB)"),
 ]
 SUPPORTED_CURRENCIES = {code for code, _ in CURRENCY_OPTIONS}
 
@@ -200,6 +214,116 @@ ACCESS_MATRIX_ROWS: List[Dict[str, str]] = [
     {"module": "Auth: Register", "route": "/register, /register/verify", "access_level": "public -> end_user", "guard": "csrf + otp verification", "description": "2FA onboarding via email + phone"},
     {"module": "Auth: User Login", "route": "/login", "access_level": "public", "guard": "rate_limit + password verify + lockout", "description": "Session access with tier-based redirect"},
 ]
+
+
+def _parse_float_field(raw: Any, default: float = 0.0) -> float:
+    try:
+        return float(str(raw).strip() or default)
+    except Exception:
+        return default
+
+
+def _kyc_case_payload_from_request(form: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "full_name": sanitize_text(form.get("full_name", ""), 120),
+        "email": sanitize_text(form.get("email", ""), 160).lower(),
+        "phone": sanitize_text(form.get("phone", ""), 30),
+        "pan_number": sanitize_text(form.get("pan_number", ""), 20).upper(),
+        "aadhaar_last4": "".join(ch for ch in sanitize_text(form.get("aadhaar_last4", ""), 8) if ch.isdigit())[-4:],
+        "company_name": sanitize_text(form.get("company_name", ""), 120),
+        "designation": sanitize_text(form.get("designation", ""), 80),
+        "years_of_experience": _parse_float_field(form.get("years_of_experience", 0), 0.0),
+        "monthly_salary": _parse_float_field(form.get("monthly_salary", 0), 0.0),
+        "requested_loan": _parse_float_field(form.get("requested_loan", 0), 0.0),
+        "existing_emi": _parse_float_field(form.get("existing_emi", 0), 0.0),
+    }
+
+
+def _validate_kyc_step(step: int, payload: Dict[str, Any]) -> List[str]:
+    errors: List[str] = []
+    if step == 1:
+        if not payload["full_name"]:
+            errors.append("Full name is required.")
+        if not payload["email"] or "@" not in payload["email"]:
+            errors.append("Valid email is required.")
+        if len("".join(ch for ch in payload["phone"] if ch.isdigit())) < 8:
+            errors.append("Valid phone number is required.")
+        if len(payload["pan_number"]) != 10:
+            errors.append("PAN must be 10 characters.")
+        if len(payload["aadhaar_last4"]) != 4:
+            errors.append("Aadhaar last 4 is required.")
+    if step == 2:
+        if not payload["company_name"]:
+            errors.append("Company name is required.")
+        if not payload["designation"]:
+            errors.append("Designation is required.")
+        if payload["years_of_experience"] < 0:
+            errors.append("Years of experience must be positive.")
+        if payload["monthly_salary"] <= 0:
+            errors.append("Monthly salary must be greater than zero.")
+        if payload["requested_loan"] <= 0:
+            errors.append("Requested loan must be greater than zero.")
+        if payload["existing_emi"] < 0:
+            errors.append("Existing EMI cannot be negative.")
+    return errors
+
+
+def _build_user_dashboard_context(app: Any, user_id: int, result: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    apps = user_applications(app.config["DB_PATH"], user_id, 20)
+    insights = user_insights(app.config["DB_PATH"], user_id)
+    with get_conn(app.config["DB_PATH"]) as conn:
+        policies = conn.execute(
+            """
+            SELECT p.id, p.policy_number, p.policy_type, p.status, p.created_at
+            FROM policies p
+            JOIN loan_applications la ON la.id = p.application_id
+            WHERE la.user_id = ?
+            ORDER BY p.id DESC
+            LIMIT 80
+            """,
+            (user_id,),
+        ).fetchall()
+        claims = conn.execute(
+            """
+            SELECT c.id, c.policy_id, c.claim_type, c.claimed_amount, c.status, c.opened_at
+            FROM claims c
+            JOIN policies p ON p.id = c.policy_id
+            JOIN loan_applications la ON la.id = p.application_id
+            WHERE la.user_id = ?
+            ORDER BY c.id DESC
+            LIMIT 80
+            """,
+            (user_id,),
+        ).fetchall()
+    chain_ok, chain_size = verify_chain(app.config["DB_PATH"])
+    model_info = active_model_info(app.config["DB_PATH"])
+    kyc_cases = list_kyc_cases_for_user(app.config["DB_PATH"], user_id, 8)
+    latest_case = get_case_detail(app.config["DB_PATH"], kyc_cases[0]["id"]) if kyc_cases else None
+    review = latest_case.get("review") if latest_case else None
+    comparisons = generate_plan_comparisons(latest_case, review) if latest_case else []
+    reapply_prefill = session.get("reapply_payload")
+    result_meta = {}
+    if result:
+        try:
+            result_meta = json.loads(result.get("decision_factors", "{}"))
+        except Exception:
+            result_meta = {}
+    return {
+        "apps": apps,
+        "policies": policies,
+        "claims": claims,
+        "insights": insights,
+        "chain_ok": chain_ok,
+        "chain_size": chain_size,
+        "model_info": model_info,
+        "result": result,
+        "result_meta": result_meta or None,
+        "explainability": explainability_for_application(result)[:5] if result else None,
+        "kyc_cases": kyc_cases,
+        "latest_kyc_case": latest_case,
+        "plan_comparisons": comparisons,
+        "reapply_prefill": reapply_prefill,
+    }
 
 
 def _validate_application(form: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str]]:
@@ -295,7 +419,7 @@ def _validate_application(form: Dict[str, Any]) -> Tuple[Dict[str, Any], List[st
         if code and code in SUPPORTED_CURRENCIES and code not in preferred_currencies:
             preferred_currencies.append(code)
     if not preferred_currencies:
-        preferred_currencies = ["USD"]
+        preferred_currencies = ["INR"]
 
     loan_profile: Dict[str, Any] = {}
     if loan_type == "CAR":
@@ -348,9 +472,17 @@ def _validate_application(form: Dict[str, Any]) -> Tuple[Dict[str, Any], List[st
         "requested_amount": parse_float("requested_amount", "Requested amount", 1000, 3000000),
         "loan_term_months": parse_int("loan_term_months", "Loan term", 6, 420),
         "employment_years": parse_float("employment_years", "Employment years", 0, 45),
-        "credit_score": parse_int("credit_score", "Credit score", 300, 900),
         "collateral_value": parse_float("collateral_value", "Collateral value", 0, 5000000),
     }
+    explicit_credit_score = sanitize_text(form.get("credit_score", ""), 10)
+    if explicit_credit_score:
+        payload["credit_score"] = parse_int("credit_score", "Credit score", 300, 900)
+        payload["credit_score_source"] = "provided"
+    else:
+        derived = derive_application_credit_score(payload)
+        payload["credit_score"] = int(derived["score"])
+        payload["credit_score_source"] = "system_calculated"
+        payload["credit_score_inputs"] = derived["factors"]
     if not payload["product_code"]:
         errors.append("Loan product is required.")
     if not payload["kyc_id_number"] or suspicious(payload["kyc_id_number"]):
@@ -426,6 +558,46 @@ def _masked_phone(phone: str) -> str:
     if len(digits) <= 4:
         return "*" * len(digits)
     return f"{'*' * (len(digits) - 4)}{digits[-4:]}"
+
+
+def _current_user_email(db_path: str, user_id: int | None) -> str:
+    if not user_id:
+        return ""
+    with get_conn(db_path) as conn:
+        row = conn.execute("SELECT email FROM users WHERE id = ?", (user_id,)).fetchone()
+    return str(row["email"] if row and row["email"] else "").strip()
+
+
+def _start_login_email_otp(app: Any, user: Dict[str, Any]) -> Dict[str, Any]:
+    code = f"{random.randint(100000, 999999)}"
+    expires_at = (datetime.utcnow() + timedelta(minutes=10)).replace(microsecond=0).isoformat() + "Z"
+    secret = app.config.get("DATA_KEY", "loanshield")
+    with get_conn(app.config["DB_PATH"]) as conn:
+        conn.execute(
+            """
+            INSERT INTO login_email_challenges (
+                user_id, username, email, email_otp_hash, expires_at, attempts, created_at
+            ) VALUES (?, ?, ?, ?, ?, 0, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                username=excluded.username,
+                email=excluded.email,
+                email_otp_hash=excluded.email_otp_hash,
+                expires_at=excluded.expires_at,
+                attempts=0,
+                created_at=excluded.created_at
+            """,
+            (
+                user["id"],
+                user["username"],
+                user["email"],
+                _otp_hash(secret, user["username"], "login_email", code),
+                expires_at,
+                utcnow(),
+            ),
+        )
+        conn.commit()
+    message = f"Your LoanShield login verification code is {code}. It expires in 10 minutes."
+    return send_email(user["email"], "LoanShield login verification code", message)
 
 
 def _scoped_data_model_view(full_data: Dict[str, Any], user_id: int | None, is_admin: bool) -> Dict[str, Any]:
@@ -512,6 +684,10 @@ def _model_visual_payload(model_data: Dict[str, Any]) -> Dict[str, Any]:
 
 def _chatbot_reply(db_path: str, user_id: int | None, text: str) -> str:
     lower = (text or "").lower()
+    case_ctx = case_chat_context(db_path, user_id)
+    case_row = case_ctx.get("case")
+    review = case_ctx.get("review")
+    missing_docs = case_ctx.get("missing_docs", [])
     if user_id and any(tok in lower for tok in ["help me improve", "improve", "increase approval", "why rejected", "how to get approved"]):
         rows = user_applications(db_path, user_id, 3)
         if not rows:
@@ -536,6 +712,67 @@ def _chatbot_reply(db_path: str, user_id: int | None, text: str) -> str:
             f"Latest application #{latest['id']} is {latest['status']} (segment {latest.get('borrower_segment', '-')}). "
             f"Recommended actions: {' '.join(tips[:4])}"
         )
+    if case_row and any(tok in lower for tok in ["kyc status", "kyc pending", "kyc rejected", "missing docs", "required docs", "salary proof", "joining letter"]):
+        if "missing" in lower:
+            return "Missing documents: " + (", ".join(missing_docs) if missing_docs else "none. All required demo documents are present.")
+        if "required" in lower:
+            return "Required documents are PAN card, 3 salary slips, joining letter, 6-month bank statement, and selfie image."
+        if "pending" in lower:
+            return f"KYC status is {case_row['kyc_status']}. Current onboarding step is {case_row['onboarding_step']} and quality label is {case_row['quality_label']}."
+        if "rejected" in lower:
+            if review and review.get("approval_status") == "rejected":
+                return f"KYC-linked review is rejected because: {review.get('explanation', 'verification mismatch detected')}."
+            return "No rejected KYC case found in your latest record."
+        if "salary proof" in lower:
+            return f"Salary proof verification score is {case_row['verification_score']:.0f}/100. Upload clear salary slips and consistent bank credits for stronger validation."
+        if "joining letter" in lower:
+            return "Joining letter validation checks company match, joining date, and experience consistency with your declared employment details."
+        return f"Your latest KYC case is {case_row['kyc_status']} with OCR status {case_row['ocr_status']} and status flow {case_row['status_flow']}."
+    if case_row and any(tok in lower for tok in ["eligible loan", "eligibility", "safer amount", "rejected reason", "risk score reason", "risk explanation", "manual review reason", "likely approval amount", "dti ratio", "affordable emi", "salary effect", "why rejected"]):
+        salary = float(case_row.get("monthly_salary") or 0)
+        emi = float(case_row.get("existing_emi") or 0)
+        dti = emi / max(1.0, salary)
+        if "dti" in lower:
+            return f"Your advisory DTI ratio is {dti:.2f}. Values above 0.40 are treated as high risk in the underwriting extension."
+        if "safer amount" in lower or "likely approval amount" in lower:
+            safer = float((review or {}).get("suggested_safer_amount") or case_row.get("suggested_safer_amount") or 0)
+            return f"Suggested safer amount is {safer:.2f}. This is advisory only and does not replace the existing loan decision engine."
+        if "affordable emi" in lower:
+            cap = salary * 0.4
+            return f"Affordable EMI threshold is about {cap:.2f} based on the advisory 40% salary cap."
+        if "salary effect" in lower:
+            return "Higher verified salary increases the advisory safe loan range and improves OCR/company matching if the documents support it."
+        if "risk" in lower:
+            if review:
+                return f"Risk level is {review['risk_level']}. Reason: {review['explanation']}"
+            return f"Risk level is {case_row['risk_level']} based on KYC, OCR, EMI-to-salary ratio, and consistency checks."
+        if "rejected" in lower or "manual review" in lower:
+            if review:
+                return f"Latest underwriting status is {review['approval_status']}. Reason: {review['explanation']}"
+            return "No underwriting advisory review is available yet."
+        eligible = float((review or {}).get("eligible_amount") or case_row.get("eligible_amount") or 0)
+        return f"Eligible advisory amount is {eligible:.2f}. Suggested safer amount is {float((review or {}).get('suggested_safer_amount') or case_row.get('suggested_safer_amount') or 0):.2f}."
+    if case_row and any(tok in lower for tok in ["estimated cibil", "score calculation", "low score reason", "improvement suggestions", "score explanation"]):
+        if "estimated cibil" in lower:
+            return f"Demo estimated CIBIL view: {case_row['cibil_band']}. This is a non-authoritative explanation layer and does not modify the existing score engine."
+        if "score calculation" in lower:
+            return "The existing credit/CIBIL calculation logic is preserved. This assistant only explains the current output band and related underwriting impact."
+        if "low score" in lower:
+            return case_row.get("cibil_explanation") or "A lower existing score output increases review intensity and narrows product eligibility."
+        return "Improvement suggestions: reduce obligations, avoid fresh delinquencies, maintain stable salary credits, and keep utilization under control."
+    if case_row and any(tok in lower for tok in ["compare plans", "best interest option", "best tenure", "emi breakdown"]):
+        plans = generate_plan_comparisons(case_row, review)
+        if not plans:
+            return "Plan comparison is available after KYC onboarding captures salary and requested amount."
+        best = next((p for p in plans if p["best_match"]), plans[0])
+        if "emi breakdown" in lower:
+            return " | ".join([f"{p['name']}: EMI {p['emi']:.2f} for {p['tenure_months']} months at {p['interest_rate']:.2f}%" for p in plans])
+        if "best interest" in lower:
+            lowest = min(plans, key=lambda x: x["interest_rate"])
+            return f"Lowest interest option is {lowest['name']} at {lowest['interest_rate']:.2f}%."
+        if "best tenure" in lower:
+            return f"Best balance for tenure is {best['name']} with {best['tenure_months']} months and approval probability {best['approval_probability_pct']}%."
+        return f"Best match is {best['name']} with EMI {best['emi']:.2f}, tenure {best['tenure_months']} months, and approval probability {best['approval_probability_pct']}%."
     docs = retrieve_policy_guidance(db_path, text, 2)
     if docs:
         ref = " | ".join([f"{d['title']}: {d['content'][:120]}" for d in docs])
@@ -598,6 +835,7 @@ def _chatbot_system_context(db_path: str, user_id: int | None) -> str:
     doc_text = "\n".join([f"- {d['title']}: {d['content'][:180]}" for d in docs])
     user_text = ""
     history_text = ""
+    case_text = ""
     if user_id:
         rows = user_applications(db_path, user_id, 1)
         if rows:
@@ -613,11 +851,24 @@ def _chatbot_system_context(db_path: str, user_id: int | None) -> str:
                 lines.append(f"User: {item.get('message', '')[:140]}")
                 lines.append(f"Assistant: {item.get('response', '')[:200]}")
             history_text = "\nRecent chat context:\n" + "\n".join(lines)
+        case_ctx = case_chat_context(db_path, user_id)
+        case_row = case_ctx.get("case")
+        review = case_ctx.get("review")
+        if case_row:
+            case_text = (
+                f"\nLatest KYC case: status={case_row['kyc_status']}, ocr={case_row['ocr_status']}, "
+                f"flow={case_row['status_flow']}, verification_score={case_row['verification_score']}."
+            )
+            if review:
+                case_text += (
+                    f" Underwriting: approval_status={review['approval_status']}, risk={review['risk_level']}, "
+                    f"eligible={review['eligible_amount']}, safer={review['suggested_safer_amount']}."
+                )
     return (
         "You are the LoanShield assistant. Keep responses concise and policy-safe. "
         "Never provide secrets, SQL, or admin bypass advice.\n"
         f"Policy snippets:\n{doc_text}\n"
-        f"{user_text}\n{history_text}"
+        f"{user_text}\n{case_text}\n{history_text}"
     )
 
 
@@ -673,6 +924,14 @@ def _application_status_markdown(app_row: Dict[str, Any]) -> str:
         f"- Collateral Shortfall: {float(factors.get('collateral_shortfall', 0.0)):.2f}",
         "",
     ]
+    if str(app_row.get("status")) == "Rejected" and float(factors.get("lower_apply_amount", app_row.get("recommended_amount", 0.0)) or 0.0) > 0:
+        lines.append(
+            f"- Suggested Lower Reapply Amount: {float(factors.get('lower_apply_amount', app_row.get('recommended_amount', 0.0))):.2f}"
+        )
+        note = str(factors.get("recommendation_note", "")).strip()
+        if note:
+            lines.append(f"- Reapply Guidance: {note}")
+        lines.append("")
     if docs:
         lines.append("## Required Documents")
         lines.append("")
@@ -729,12 +988,18 @@ def register_routes(app):
 
     @app.route("/")
     @app.route("/welcome")
+    @app.route("/loanshield")
+    @app.route("/loanshield/welcome")
+    @app.route("/loansuite")
+    @app.route("/loansuite/welcome")
     def home():
         chain_ok, chain_size = verify_chain(app.config["DB_PATH"])
         model_info = active_model_info(app.config["DB_PATH"])
         return render_template("home.html", chain_ok=chain_ok, chain_size=chain_size, model_info=model_info)
 
     @app.route("/register", methods=["GET", "POST"])
+    @app.route("/loanshield/register", methods=["GET", "POST"])
+    @app.route("/loansuite/register", methods=["GET", "POST"])
     def register():
         if request.method == "POST":
             if not verify_csrf(request.form.get("csrf_token", "")):
@@ -782,7 +1047,6 @@ def register_routes(app):
                     return redirect(url_for("register"))
 
                 email_code = f"{random.randint(100000, 999999)}"
-                phone_code = f"{random.randint(100000, 999999)}"
                 expires_at = (datetime.utcnow() + timedelta(minutes=10)).replace(microsecond=0).isoformat() + "Z"
                 secret = app.config.get("DATA_KEY", "loanshield")
                 conn.execute(
@@ -811,7 +1075,7 @@ def register_routes(app):
                         email,
                         phone,
                         _otp_hash(secret, username, "email", email_code),
-                        _otp_hash(secret, username, "phone", phone_code),
+                        "",
                         expires_at,
                         utcnow(),
                     ),
@@ -819,23 +1083,23 @@ def register_routes(app):
                 conn.commit()
 
             email_message = f"Your LoanShield email verification code is {email_code}. It expires in 10 minutes."
-            sms_message = f"LoanShield phone verification code: {phone_code}. Expires in 10 minutes."
             email_res = send_email(email, "LoanShield signup verification code", email_message)
-            sms_res = send_sms(phone, sms_message)
-            if not email_res.get("ok") or not sms_res.get("ok"):
+            if not email_res.get("ok"):
                 with get_conn(app.config["DB_PATH"]) as conn:
                     conn.execute("DELETE FROM signup_2fa_challenges WHERE username = ?", (username,))
                     conn.commit()
-                flash("Unable to send verification codes right now. Please try again.")
+                flash("Unable to send the verification email right now. Please try again.")
                 return redirect(url_for("register"))
 
             session["signup_2fa_username"] = username
-            flash("Verification codes sent to your email and phone.")
+            flash("Verification code sent to your email.")
             return redirect(url_for("register_verify"))
 
         return render_template("auth/register.html")
 
     @app.route("/register/verify", methods=["GET", "POST"])
+    @app.route("/loanshield/register/verify", methods=["GET", "POST"])
+    @app.route("/loansuite/register/verify", methods=["GET", "POST"])
     def register_verify():
         username = sanitize_text(request.args.get("username", "") or session.get("signup_2fa_username", ""), 30).lower()
         if not username:
@@ -847,7 +1111,6 @@ def register_routes(app):
                 return redirect(url_for("register_verify"))
             username = sanitize_text(request.form.get("username", ""), 30).lower()
             email_code = sanitize_text(request.form.get("email_code", ""), 8)
-            phone_code = sanitize_text(request.form.get("phone_code", ""), 8)
             with get_conn(app.config["DB_PATH"]) as conn:
                 challenge = conn.execute(
                     "SELECT * FROM signup_2fa_challenges WHERE username = ?",
@@ -863,15 +1126,14 @@ def register_routes(app):
                     return redirect(url_for("register"))
                 secret = app.config.get("DATA_KEY", "loanshield")
                 email_ok = _otp_hash(secret, username, "email", email_code) == challenge["email_otp_hash"]
-                phone_ok = _otp_hash(secret, username, "phone", phone_code) == challenge["phone_otp_hash"]
-                if not email_ok or not phone_ok:
+                if not email_ok:
                     attempts = int(challenge.get("attempts") or 0) + 1
                     if attempts >= 8:
                         conn.execute("DELETE FROM signup_2fa_challenges WHERE username = ?", (username,))
                     else:
                         conn.execute("UPDATE signup_2fa_challenges SET attempts = ? WHERE username = ?", (attempts, username))
                     conn.commit()
-                    flash("Invalid verification codes.")
+                    flash("Invalid email verification code.")
                     return redirect(url_for("register_verify"))
                 exists = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
                 if exists:
@@ -896,14 +1158,14 @@ def register_routes(app):
                         challenge["email"],
                         challenge["phone"],
                         created_at,
-                        created_at,
+                        None,
                         created_at,
                     ),
                 )
                 conn.execute("DELETE FROM signup_2fa_challenges WHERE username = ?", (username,))
                 conn.commit()
             session.pop("signup_2fa_username", None)
-            flash("Registration complete with email and phone verification.")
+            flash("Registration complete with email verification.")
             return redirect(url_for("user_login"))
 
         with get_conn(app.config["DB_PATH"]) as conn:
@@ -918,11 +1180,12 @@ def register_routes(app):
             "auth/register_verify.html",
             username=challenge["username"],
             email_masked=_masked_email(challenge["email"]),
-            phone_masked=_masked_phone(challenge["phone"]),
             expires_at=challenge["expires_at"],
         )
 
     @app.route("/login", methods=["GET", "POST"])
+    @app.route("/loanshield/login", methods=["GET", "POST"])
+    @app.route("/loansuite/login", methods=["GET", "POST"])
     def user_login():
         if request.method == "POST":
             if not verify_csrf(request.form.get("csrf_token", "")):
@@ -961,8 +1224,76 @@ def register_routes(app):
                         flash("Invalid user credentials.")
                     return redirect(url_for("user_login"))
                 reset_login_failures(app.config["DB_PATH"], user["id"])
+            email_res = _start_login_email_otp(app, user)
+            if not email_res.get("ok"):
+                with get_conn(app.config["DB_PATH"]) as conn:
+                    conn.execute("DELETE FROM login_email_challenges WHERE user_id = ?", (user["id"],))
+                    conn.commit()
+                flash("Unable to send the login verification email right now. Please try again.")
+                return redirect(url_for("user_login"))
 
-                conn.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (utcnow(), user["id"]))
+            session.clear()
+            session["login_otp_user_id"] = user["id"]
+            session["login_otp_username"] = user["username"]
+            flash("Verification code sent to your email.")
+            return redirect(url_for("user_login_verify"))
+
+        return render_template("auth/user_login.html")
+
+    @app.route("/login/verify", methods=["GET", "POST"])
+    @app.route("/loanshield/login/verify", methods=["GET", "POST"])
+    @app.route("/loansuite/login/verify", methods=["GET", "POST"])
+    def user_login_verify():
+        pending_user_id = int(session.get("login_otp_user_id") or 0)
+        pending_username = sanitize_text(session.get("login_otp_username", ""), 30).lower()
+        if not pending_user_id or not pending_username:
+            flash("No pending login verification found.")
+            return redirect(url_for("user_login"))
+        if request.method == "POST":
+            if not verify_csrf(request.form.get("csrf_token", "")):
+                flash("Invalid security token.")
+                return redirect(url_for("user_login_verify"))
+            username = sanitize_text(request.form.get("username", ""), 30).lower()
+            email_code = sanitize_text(request.form.get("email_code", ""), 8)
+            with get_conn(app.config["DB_PATH"]) as conn:
+                challenge = conn.execute(
+                    "SELECT * FROM login_email_challenges WHERE user_id = ? AND username = ?",
+                    (pending_user_id, pending_username),
+                ).fetchone()
+                if not challenge or username != pending_username:
+                    flash("Login verification session expired.")
+                    return redirect(url_for("user_login"))
+                if challenge["expires_at"] < utcnow():
+                    conn.execute("DELETE FROM login_email_challenges WHERE user_id = ?", (pending_user_id,))
+                    conn.commit()
+                    session.pop("login_otp_user_id", None)
+                    session.pop("login_otp_username", None)
+                    flash("Login verification code expired. Please sign in again.")
+                    return redirect(url_for("user_login"))
+                secret = app.config.get("DATA_KEY", "loanshield")
+                email_ok = _otp_hash(secret, pending_username, "login_email", email_code) == challenge["email_otp_hash"]
+                if not email_ok:
+                    attempts = int(challenge.get("attempts") or 0) + 1
+                    if attempts >= 8:
+                        conn.execute("DELETE FROM login_email_challenges WHERE user_id = ?", (pending_user_id,))
+                    else:
+                        conn.execute("UPDATE login_email_challenges SET attempts = ? WHERE user_id = ?", (attempts, pending_user_id))
+                    conn.commit()
+                    flash("Invalid email verification code.")
+                    return redirect(url_for("user_login_verify"))
+                user = conn.execute(
+                    "SELECT * FROM users WHERE id = ? AND username = ? AND role = 'user'",
+                    (pending_user_id, pending_username),
+                ).fetchone()
+                if not user:
+                    conn.execute("DELETE FROM login_email_challenges WHERE user_id = ?", (pending_user_id,))
+                    conn.commit()
+                    session.pop("login_otp_user_id", None)
+                    session.pop("login_otp_username", None)
+                    flash("User account no longer exists.")
+                    return redirect(url_for("user_login"))
+                conn.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (utcnow(), pending_user_id))
+                conn.execute("DELETE FROM login_email_challenges WHERE user_id = ?", (pending_user_id,))
                 conn.commit()
 
             session.clear()
@@ -977,9 +1308,55 @@ def register_routes(app):
                 return redirect(url_for("company_dashboard"))
             return redirect(url_for("user_dashboard"))
 
-        return render_template("auth/user_login.html")
+        with get_conn(app.config["DB_PATH"]) as conn:
+            challenge = conn.execute(
+                "SELECT username, email, expires_at, attempts FROM login_email_challenges WHERE user_id = ? AND username = ?",
+                (pending_user_id, pending_username),
+            ).fetchone()
+        if not challenge:
+            flash("No pending login verification found.")
+            session.pop("login_otp_user_id", None)
+            session.pop("login_otp_username", None)
+            return redirect(url_for("user_login"))
+        return render_template(
+            "auth/login_verify.html",
+            username=challenge["username"],
+            email_masked=_masked_email(challenge["email"]),
+            expires_at=challenge["expires_at"],
+            attempts=int(challenge["attempts"] or 0),
+            max_attempts=8,
+        )
+
+    @app.route("/login/verify/resend", methods=["POST"])
+    @app.route("/loanshield/login/verify/resend", methods=["POST"])
+    @app.route("/loansuite/login/verify/resend", methods=["POST"])
+    def user_login_verify_resend():
+        if not verify_csrf(request.form.get("csrf_token", "")):
+            flash("Invalid security token.")
+            return redirect(url_for("user_login_verify"))
+        pending_user_id = int(session.get("login_otp_user_id") or 0)
+        pending_username = sanitize_text(session.get("login_otp_username", ""), 30).lower()
+        if not pending_user_id or not pending_username:
+            flash("No pending login verification found.")
+            return redirect(url_for("user_login"))
+        with get_conn(app.config["DB_PATH"]) as conn:
+            user = conn.execute(
+                "SELECT * FROM users WHERE id = ? AND username = ? AND role = 'user'",
+                (pending_user_id, pending_username),
+            ).fetchone()
+        if not user:
+            flash("User account not found.")
+            return redirect(url_for("user_login"))
+        email_res = _start_login_email_otp(app, user)
+        if not email_res.get("ok"):
+            flash("Unable to resend the verification email right now.")
+            return redirect(url_for("user_login_verify"))
+        flash("Verification code resent to your email.")
+        return redirect(url_for("user_login_verify"))
 
     @app.route("/admin/login", methods=["GET", "POST"])
+    @app.route("/loanshield/admin/login", methods=["GET", "POST"])
+    @app.route("/loansuite/admin/login", methods=["GET", "POST"])
     def admin_login():
         if request.method == "POST":
             if not verify_csrf(request.form.get("csrf_token", "")):
@@ -1035,12 +1412,16 @@ def register_routes(app):
         return render_template("auth/admin_login.html")
 
     @app.route("/logout")
+    @app.route("/loanshield/logout")
+    @app.route("/loansuite/logout")
     def logout():
         session.clear()
         flash("You have been logged out.")
         return redirect(url_for("home"))
 
     @app.route("/chatbot", methods=["GET", "POST"])
+    @app.route("/loanshield/chatbot", methods=["GET", "POST"])
+    @app.route("/loansuite/chatbot", methods=["GET", "POST"])
     def chatbot():
         if not session.get("user_id"):
             flash("Please log in to use assistant.")
@@ -1049,6 +1430,9 @@ def register_routes(app):
             "What is my latest application status?",
             "How can I improve my approval chances?",
             "Which documents are required for my application?",
+            "What is my KYC status and missing docs?",
+            "Why was my loan sent to manual review?",
+            "Show my safer amount and EMI breakdown.",
             "Show my next EMI details.",
             "List available loan products and ranges.",
         ]
@@ -1089,51 +1473,15 @@ def register_routes(app):
         return render_template("chatbot.html", history=history, quick_prompts=quick_prompts)
 
     @app.route("/user/dashboard")
+    @app.route("/loanshield/user/dashboard")
+    @app.route("/loansuite/user/dashboard")
     @access_level_required("end_user")
     def user_dashboard():
-        apps = user_applications(app.config["DB_PATH"], session["user_id"], 20)
-        insights = user_insights(app.config["DB_PATH"], session["user_id"])
-        with get_conn(app.config["DB_PATH"]) as conn:
-            policies = conn.execute(
-                """
-                SELECT p.id, p.policy_number, p.policy_type, p.status, p.created_at
-                FROM policies p
-                JOIN loan_applications la ON la.id = p.application_id
-                WHERE la.user_id = ?
-                ORDER BY p.id DESC
-                LIMIT 80
-                """,
-                (session["user_id"],),
-            ).fetchall()
-            claims = conn.execute(
-                """
-                SELECT c.id, c.policy_id, c.claim_type, c.claimed_amount, c.status, c.opened_at
-                FROM claims c
-                JOIN policies p ON p.id = c.policy_id
-                JOIN loan_applications la ON la.id = p.application_id
-                WHERE la.user_id = ?
-                ORDER BY c.id DESC
-                LIMIT 80
-                """,
-                (session["user_id"],),
-            ).fetchall()
-        chain_ok, chain_size = verify_chain(app.config["DB_PATH"])
-        model_info = active_model_info(app.config["DB_PATH"])
-        return render_template(
-            "user/dashboard.html",
-            apps=apps,
-            policies=policies,
-            claims=claims,
-            insights=insights,
-            chain_ok=chain_ok,
-            chain_size=chain_size,
-            model_info=model_info,
-            result=None,
-            result_meta=None,
-            explainability=None,
-        )
+        return render_template("user/dashboard.html", **_build_user_dashboard_context(app, session["user_id"], result=None))
 
     @app.route("/user/apply", methods=["POST"])
+    @app.route("/loanshield/user/apply", methods=["POST"])
+    @app.route("/loansuite/user/apply", methods=["POST"])
     @access_level_required("end_user")
     def user_apply():
         if not verify_csrf(request.form.get("csrf_token", "")):
@@ -1145,6 +1493,7 @@ def register_routes(app):
             for e in errors:
                 flash(e)
             return redirect(url_for("user_dashboard"))
+        session.pop("reapply_payload", None)
 
         bundle = _model_or_retrain()
         policy = get_product_policy_by_code(app.config["DB_PATH"], payload["product_code"])
@@ -1210,6 +1559,8 @@ def register_routes(app):
         )
 
         result = get_application(app.config["DB_PATH"], app_id)
+        case_row = create_or_get_kyc_case(app.config["DB_PATH"], session["user_id"], app_id)
+        case_row = sync_case_with_application(app.config["DB_PATH"], case_row["id"], result)
         create_workflow_task(
             app.config["DB_PATH"],
             application_id=app_id,
@@ -1227,6 +1578,15 @@ def register_routes(app):
                 priority="Critical",
                 assignee_user_id=None,
                 sla_hours=12,
+            )
+            log_case_audit(
+                app.config["DB_PATH"],
+                case_id=case_row["id"],
+                application_id=app_id,
+                action="DOC_REVERIFICATION",
+                actor="system",
+                remarks="Existing document intelligence flagged a mismatch.",
+                status_flow="manual_review",
             )
         record_consent(app.config["DB_PATH"], session["user_id"], "DATA_PROCESSING", "true")
         create_compliance_event(
@@ -1270,7 +1630,10 @@ def register_routes(app):
             "APPLICATION_SUBMITTED",
             json.dumps({"application_id": app_id, "status": result["status"]}),
         )
-        recipient = f"{session['username']}@example.local"
+        recipient = _current_user_email(app.config["DB_PATH"], session.get("user_id"))
+        if not recipient:
+            flash("Application created, but no verified email is available for notifications.")
+            return render_template("user/dashboard.html", **_build_user_dashboard_context(app, session["user_id"], result=result))
         subject = f"Loan Application #{app_id} - {result['status']}"
         message = f"Status: {result['status']} | Tier: {result['tier']} | Amount: {result['requested_amount']}"
         email_res = send_email(recipient, subject, message)
@@ -1300,52 +1663,14 @@ def register_routes(app):
             "Application processed",
             json.dumps({"application_id": app_id, "status": result["status"], "segment": result.get("borrower_segment", "-")}),
         )
-        result_meta = {}
-        try:
-            result_meta = json.loads(result["decision_factors"])
-        except Exception:
-            result_meta = {}
-        insights = user_insights(app.config["DB_PATH"], session["user_id"])
-        apps = user_applications(app.config["DB_PATH"], session["user_id"], 20)
-        with get_conn(app.config["DB_PATH"]) as conn:
-            policies = conn.execute(
-                """
-                SELECT p.id, p.policy_number, p.policy_type, p.status, p.created_at
-                FROM policies p
-                JOIN loan_applications la ON la.id = p.application_id
-                WHERE la.user_id = ?
-                ORDER BY p.id DESC
-                LIMIT 80
-                """,
-                (session["user_id"],),
-            ).fetchall()
-            claims = conn.execute(
-                """
-                SELECT c.id, c.policy_id, c.claim_type, c.claimed_amount, c.status, c.opened_at
-                FROM claims c
-                JOIN policies p ON p.id = c.policy_id
-                JOIN loan_applications la ON la.id = p.application_id
-                WHERE la.user_id = ?
-                ORDER BY c.id DESC
-                LIMIT 80
-                """,
-                (session["user_id"],),
-            ).fetchall()
-        chain_ok, chain_size = verify_chain(app.config["DB_PATH"])
-        model_info = active_model_info(app.config["DB_PATH"])
-        return render_template(
-            "user/dashboard.html",
-            apps=apps,
-            policies=policies,
-            claims=claims,
-            insights=insights,
-            chain_ok=chain_ok,
-            chain_size=chain_size,
-            model_info=model_info,
-            result=result,
-            result_meta=result_meta,
-            explainability=explainability_for_application(result)[:5] if result else [],
-        )
+        run_extended_underwriting(app.config["DB_PATH"], case_row["id"])
+        if result["status"] == "Rejected":
+            safer_amount = float(result.get("recommended_amount") or 0)
+            if safer_amount > 0:
+                flash(
+                    f"Loan rejected for the requested amount. You can reapply with a lower amount of {safer_amount:.2f}."
+                )
+        return render_template("user/dashboard.html", **_build_user_dashboard_context(app, session["user_id"], result=result))
 
     @app.route("/user/application/<int:app_id>/download.md")
     @access_level_required("end_user")
@@ -1382,6 +1707,10 @@ def register_routes(app):
             flash("File too large. Max size is 4 MB.")
             return redirect(url_for("user_dashboard"))
         doc = process_uploaded_document(app.config["DB_PATH"], app_row, uploaded.filename, file_bytes)
+        case_row = create_or_get_kyc_case(app.config["DB_PATH"], session["user_id"], app_id)
+        case_doc_type = sanitize_text(request.form.get("doc_type", ""), 60) or "Bank Statement (6 months)"
+        upload_kyc_case_document(app.config["DB_PATH"], case_row["id"], case_doc_type, uploaded.filename, file_bytes)
+        run_extended_underwriting(app.config["DB_PATH"], case_row["id"])
         append_chain(
             app.config["DB_PATH"],
             application_id=app_id,
@@ -1391,6 +1720,114 @@ def register_routes(app):
         )
         flash(f"Document processed. OCR status: {doc.get('status')} (mismatch {doc.get('mismatch_score')}).")
         return redirect(url_for("user_dashboard"))
+
+    @app.route("/user/application/<int:app_id>/reapply-lower", methods=["POST"])
+    @access_level_required("end_user")
+    def user_application_reapply_lower(app_id: int):
+        if not verify_csrf(request.form.get("csrf_token", "")):
+            flash("Invalid security token.")
+            return redirect(url_for("user_dashboard"))
+        app_row = get_application(app.config["DB_PATH"], app_id)
+        if not app_row or app_row.get("user_id") != session.get("user_id"):
+            flash("Application not found.")
+            return redirect(url_for("user_dashboard"))
+        safer_amount = float(app_row.get("recommended_amount") or 0)
+        with get_conn(app.config["DB_PATH"]) as conn:
+            case_row = conn.execute(
+                """
+                SELECT suggested_safer_amount
+                FROM kyc_cases
+                WHERE application_id = ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (app_id,),
+            ).fetchone()
+        if case_row and float(case_row.get("suggested_safer_amount") or 0) > 0:
+            safer_amount = float(case_row["suggested_safer_amount"])
+        safer_amount = max(1000.0, round(safer_amount or (float(app_row.get("requested_amount") or 0) * 0.8), 2))
+        reapply_payload = {
+            "loan_type": app_row.get("loan_type", "PERSONAL"),
+            "product_code": app_row.get("product_code", ""),
+            "policy_type": app_row.get("policy_type", "STANDARD"),
+            "region": app_row.get("region", ""),
+            "current_salary": float(app_row.get("current_salary") or 0),
+            "monthly_expenditure": float(app_row.get("monthly_expenditure") or 0),
+            "existing_emi": float(app_row.get("existing_emi") or 0),
+            "requested_amount": safer_amount,
+            "loan_term_months": int(app_row.get("loan_term_months") or 12),
+            "employment_years": float(app_row.get("employment_years") or 0),
+            "credit_score": int(app_row.get("credit_score") or 300),
+            "collateral_value": float(app_row.get("collateral_value") or 0),
+            "kyc_id_number": "",
+            "income_doc_ref": "",
+        }
+        session["reapply_payload"] = reapply_payload
+        flash(f"You can reapply with a lower amount. A safer amount of {safer_amount:.2f} has been prefilled in the application form.")
+        return redirect(url_for("user_dashboard"))
+
+    @app.route("/user/kyc-onboarding", methods=["GET", "POST"])
+    @app.route("/user/kyc-onboarding/<int:case_id>", methods=["GET", "POST"])
+    @access_level_required("end_user")
+    def user_kyc_onboarding(case_id: int | None = None):
+        bootstrap_mock_kyc_cases(app.config["DB_PATH"])
+        case_row = create_or_get_kyc_case(app.config["DB_PATH"], session["user_id"])
+        if case_id and case_id != case_row["id"]:
+            detail = get_case_detail(app.config["DB_PATH"], case_id)
+            if not detail or detail.get("user_id") != session["user_id"]:
+                flash("KYC case not found.")
+                return redirect(url_for("user_dashboard"))
+            case_row = detail
+        if request.method == "POST":
+            if not verify_csrf(request.form.get("csrf_token", "")):
+                flash("Invalid security token.")
+                return redirect(url_for("user_kyc_onboarding", case_id=case_row["id"]))
+            action = sanitize_text(request.form.get("action", ""), 40)
+            if action == "save_personal":
+                payload = _kyc_case_payload_from_request(request.form)
+                errors = _validate_kyc_step(1, payload)
+                if errors:
+                    for item in errors:
+                        flash(item)
+                else:
+                    update_kyc_case_profile(app.config["DB_PATH"], case_row["id"], payload, 2)
+                    log_case_audit(app.config["DB_PATH"], case_row["id"], case_row.get("application_id"), "PERSONAL_DETAILS_UPDATED", session["username"], "Personal details saved.", "kyc_review")
+                    flash("Personal details saved.")
+            elif action == "save_employment":
+                payload = _kyc_case_payload_from_request(request.form)
+                errors = _validate_kyc_step(2, payload)
+                if errors:
+                    for item in errors:
+                        flash(item)
+                else:
+                    update_kyc_case_profile(app.config["DB_PATH"], case_row["id"], payload, 3)
+                    log_case_audit(app.config["DB_PATH"], case_row["id"], case_row.get("application_id"), "EMPLOYMENT_DETAILS_UPDATED", session["username"], "Employment details saved.", "kyc_review")
+                    flash("Employment details saved.")
+            elif action == "upload_document":
+                uploaded = request.files.get("document_file")
+                doc_type = sanitize_text(request.form.get("doc_type", ""), 80)
+                if not uploaded or not uploaded.filename or not doc_type:
+                    flash("Select a document type and file.")
+                else:
+                    file_bytes = uploaded.read() or b""
+                    if not file_bytes:
+                        flash("Uploaded file is empty.")
+                    else:
+                        upload_kyc_case_document(app.config["DB_PATH"], case_row["id"], doc_type, uploaded.filename, file_bytes)
+                        flash(f"{doc_type} uploaded and verified.")
+            elif action == "run_review":
+                run_extended_underwriting(app.config["DB_PATH"], case_row["id"])
+                flash("OCR and underwriting review refreshed.")
+            return redirect(url_for("user_kyc_onboarding", case_id=case_row["id"]))
+        detail = get_case_detail(app.config["DB_PATH"], case_row["id"])
+        return render_template(
+            "user/kyc_onboarding.html",
+            case_row=detail,
+            step_labels=KYC_STEP_LABELS,
+            required_docs=KYC_REQUIRED_DOCS,
+            doc_aliases=DOC_TYPE_ALIASES,
+            plan_comparisons=generate_plan_comparisons(detail, detail.get("review")) if detail else [],
+        )
 
     @app.route("/user/claim/create", methods=["POST"])
     @access_level_required("end_user")
@@ -1599,6 +2036,92 @@ def register_routes(app):
             generated_files=generated_files,
             servicing=servicing,
         )
+
+    @app.route("/admin/kyc-dashboard")
+    @role_required("admin")
+    def admin_kyc_dashboard():
+        data = kyc_dashboard_overview(app.config["DB_PATH"])
+        return render_template("admin/kyc_dashboard.html", data=data)
+
+    @app.route("/admin/underwriting-dashboard")
+    @role_required("admin")
+    def admin_underwriting_dashboard():
+        data = underwriting_dashboard_overview(app.config["DB_PATH"])
+        workflow = workflow_overview(app.config["DB_PATH"], 120)
+        return render_template("admin/underwriting_dashboard.html", data=data, workflow=workflow)
+
+    @app.route("/admin/kyc-case/<int:case_id>/decision", methods=["POST"])
+    @role_required("admin")
+    def admin_kyc_case_decision(case_id: int):
+        if not verify_csrf(request.form.get("csrf_token", "")):
+            flash("Invalid security token.")
+            return redirect(url_for("admin_kyc_dashboard"))
+        decision = sanitize_text(request.form.get("decision", ""), 40)
+        remarks = sanitize_text(request.form.get("remarks", ""), 180)
+        try:
+            admin_case_decision(app.config["DB_PATH"], case_id, decision, session.get("username", "admin"), remarks)
+            if decision in {"approved", "rejected", "manual_review"}:
+                run_extended_underwriting(app.config["DB_PATH"], case_id)
+            flash(f"KYC case #{case_id} updated to {decision}.")
+        except Exception:
+            flash("Unable to update KYC case.")
+        return redirect(url_for("admin_kyc_dashboard"))
+
+    @app.route("/admin/kyc-case/<int:case_id>/demo-docs", methods=["POST"])
+    @role_required("admin")
+    def admin_kyc_case_demo_docs(case_id: int):
+        if not verify_csrf(request.form.get("csrf_token", "")):
+            flash("Invalid security token.")
+            return redirect(url_for("admin_kyc_dashboard"))
+        action = sanitize_text(request.form.get("demo_action", ""), 40)
+        detail = get_case_detail(app.config["DB_PATH"], case_id)
+        if not detail:
+            flash("KYC case not found.")
+            return redirect(url_for("admin_kyc_dashboard"))
+        if action == "generate":
+            generate_mock_documents_for_case(app.config["DB_PATH"], case_id)
+            flash(f"Demo documents generated for case #{case_id}.")
+        elif action == "attach":
+            res = import_demo_document_pack(app.config["DB_PATH"], case_id)
+            run_extended_underwriting(app.config["DB_PATH"], case_id)
+            flash(f"Imported {res['imported']} demo documents into case #{case_id}.")
+        else:
+            flash("Invalid demo document action.")
+        return redirect(url_for("admin_kyc_dashboard"))
+
+    @app.route("/admin/underwriting-case/<int:case_id>/remark", methods=["POST"])
+    @role_required("admin")
+    def admin_underwriting_case_remark(case_id: int):
+        if not verify_csrf(request.form.get("csrf_token", "")):
+            flash("Invalid security token.")
+            return redirect(url_for("admin_underwriting_dashboard"))
+        remark = sanitize_text(request.form.get("remark", ""), 240)
+        escalate = sanitize_text(request.form.get("escalate", ""), 10).lower() == "yes"
+        detail = get_case_detail(app.config["DB_PATH"], case_id)
+        if not detail:
+            flash("Underwriting case not found.")
+            return redirect(url_for("admin_underwriting_dashboard"))
+        flow = "escalated" if escalate else "underwriting_review"
+        log_case_audit(
+            app.config["DB_PATH"],
+            case_id=case_id,
+            application_id=detail.get("application_id"),
+            action="UNDERWRITER_REMARK",
+            actor=session.get("username", "admin"),
+            remarks=remark or "Underwriter reviewed case.",
+            status_flow=flow,
+        )
+        if escalate and detail.get("application_id"):
+            create_workflow_task(
+                app.config["DB_PATH"],
+                application_id=int(detail["application_id"]),
+                stage="UNDERWRITING_ESCALATION",
+                priority="Critical",
+                assignee_user_id=None,
+                sla_hours=6,
+            )
+        flash("Underwriter remark recorded.")
+        return redirect(url_for("admin_underwriting_dashboard"))
 
     @app.route("/admin/retrain", methods=["POST"])
     @role_required("admin")
@@ -1831,7 +2354,9 @@ def register_routes(app):
             ("Case Detail", "admin_case_detail_picker"),
             ("Submission Timeline", "admin_submission_timeline"),
             ("Document Center", "admin_document_center"),
+            ("KYC Dashboard", "admin_kyc_dashboard"),
             ("Underwriter Workbench", "admin_underwriter_workbench"),
+            ("Underwriting Dashboard", "admin_underwriting_dashboard"),
             ("Rules Configuration", "admin_rules_config"),
             ("Rules Engine (Editable)", "admin_rules_engine"),
             ("Model Explainability", "admin_model_explainability"),
@@ -2149,20 +2674,21 @@ def register_routes(app):
             return redirect(url_for("admin_servicing_ledger"))
         res = run_delinquency_workflow(app.config["DB_PATH"], actor_id=session["user_id"])
         if res["triggered"] > 0:
-            recipient = f"{session['username']}@example.local"
-            subject = "Delinquency Workflow Alert"
-            message = f"Delinquency workflow triggered {res['triggered']} actions."
-            mail = send_email(recipient, subject, message)
-            log_notification(
-                app.config["DB_PATH"],
-                application_id=None,
-                channel="email",
-                recipient=recipient,
-                subject=subject,
-                message=message,
-                status="sent" if mail.get("ok") else "failed",
-                provider=mail.get("provider", "sendgrid"),
-            )
+            recipient = _current_user_email(app.config["DB_PATH"], session.get("user_id"))
+            if recipient:
+                subject = "Delinquency Workflow Alert"
+                message = f"Delinquency workflow triggered {res['triggered']} actions."
+                mail = send_email(recipient, subject, message)
+                log_notification(
+                    app.config["DB_PATH"],
+                    application_id=None,
+                    channel="email",
+                    recipient=recipient,
+                    subject=subject,
+                    message=message,
+                    status="sent" if mail.get("ok") else "failed",
+                    provider=mail.get("provider", "sendgrid"),
+                )
         flash(f"Delinquency workflow completed. Triggered actions: {res['triggered']}")
         return redirect(url_for("admin_servicing_ledger"))
 
@@ -2265,6 +2791,7 @@ def register_routes(app):
         rows.extend(
             [
                 {"rule_name": "Auto Approval Threshold", "value": "risk_score >= 78 and prob >= 0.72"},
+                {"rule_name": "Auto Approval Amount Limit", "value": "<= 150000 requested amount"},
                 {"rule_name": "Manual Review Threshold", "value": "risk_score >= 58 and prob >= 0.48"},
                 {"rule_name": "High Risk Threshold", "value": "risk_score <= 45"},
             ]
@@ -2581,8 +3108,7 @@ def register_routes(app):
     def admin_integration_hub():
         flags = integration_status()
         rows = [
-            {"service": "SendGrid Email", "status": "Connected" if flags["sendgrid"] else "Not Configured", "last_sync": "N/A"},
-            {"service": "Twilio SMS", "status": "Connected" if flags["twilio"] else "Not Configured", "last_sync": "N/A"},
+            {"service": "SMTP Email", "status": "Connected" if flags["smtp"] or flags["sendgrid"] else "Not Configured", "last_sync": "N/A"},
             {"service": "Stripe Payments", "status": "Connected" if flags["stripe"] else "Not Configured", "last_sync": "N/A"},
             {"service": "KYC Provider", "status": "Connected" if flags["kyc"] else "Not Configured", "last_sync": "N/A"},
             {"service": "Mapbox Address Validation", "status": "Connected" if flags["mapbox"] else "Not Configured", "last_sync": "N/A"},
@@ -2618,7 +3144,6 @@ def register_routes(app):
             flash("Invalid security token.")
             return redirect(url_for("admin_integration_test"))
         recipient_email = sanitize_text(request.form.get("test_email", ""), 120)
-        recipient_sms = sanitize_text(request.form.get("test_sms", ""), 30)
 
         if recipient_email:
             subject = "LoanShield Integration Test Email"
@@ -2641,29 +3166,8 @@ def register_routes(app):
                 event_type="INTEGRATION_TEST_EMAIL",
                 payload=f"recipient={recipient_email};ok={res.get('ok')}",
             )
-        if recipient_sms:
-            message = "LoanShield integration test SMS."
-            res = send_sms(recipient_sms, message)
-            log_notification(
-                app.config["DB_PATH"],
-                application_id=None,
-                channel="sms",
-                recipient=recipient_sms,
-                subject="Integration Test SMS",
-                message=message,
-                status="sent" if res.get("ok") else "failed",
-                provider=res.get("provider", "twilio"),
-            )
-            append_chain(
-                app.config["DB_PATH"],
-                application_id=None,
-                actor_id=session["user_id"],
-                event_type="INTEGRATION_TEST_SMS",
-                payload=f"recipient={recipient_sms};ok={res.get('ok')}",
-            )
-
-        if not recipient_email and not recipient_sms:
-            flash("Provide at least one test recipient (email or SMS).")
+        if not recipient_email:
+            flash("Provide an email recipient for the SMTP integration test.")
         else:
             flash("Integration test notification run completed.")
         return redirect(url_for("admin_integration_test"))

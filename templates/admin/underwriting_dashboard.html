@@ -1,0 +1,154 @@
+{% extends 'base.html' %}
+{% block title %}Underwriting Dashboard | LoanShield{% endblock %}
+{% block body %}
+<main class="page dash-grid">
+  <section class="panel wide">
+    <div class="row-between">
+      <div>
+        <h1>Underwriting Dashboard</h1>
+        <p>Guidewire-style underwriting workbench with approval routing, confidence, monthly trends, rejection analytics, risk heatmap, remarks, and SLA escalation cues.</p>
+      </div>
+      <div class="hero-actions">
+        <a class="btn ghost" href="{{ url_for('admin_dashboard') }}">Back to AdminCenter</a>
+        <form method="post" action="{{ url_for('admin_hitl_escalate') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn" type="submit">Run SLA Escalation</button>
+        </form>
+      </div>
+    </div>
+    <div class="metric-cards command-cards">
+      <article><span>Total Applications</span><strong>{{ data.cards.total_applications }}</strong></article>
+      <article><span>Approved</span><strong>{{ data.cards.approved }}</strong></article>
+      <article><span>Rejected</span><strong>{{ data.cards.rejected }}</strong></article>
+      <article><span>Average OCR Score</span><strong>{{ data.cards.average_ocr_score }}</strong></article>
+      <article><span>Average Risk Score</span><strong>{{ data.cards.average_risk_score }}</strong></article>
+      <article><span>Recommendation Confidence</span><strong>{{ data.cards.average_recommendation_confidence }}%</strong></article>
+      <article><span>Open Workflow Tasks</span><strong>{{ workflow.tasks|length }}</strong></article>
+      <article><span>Workflow Escalations</span><strong>{{ workflow.escalations|length }}</strong></article>
+      <article><span>Overdue SLA</span><strong>{{ workflow.overdue }}</strong></article>
+    </div>
+  </section>
+
+  <section class="panel wide">
+    <h2>Approval Routing + Work Queue</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Task</th><th>Application</th><th>Stage</th><th>Priority</th><th>SLA Due</th><th>Status</th><th>Assignee</th></tr></thead>
+        <tbody>
+          {% for task in workflow.tasks[:30] %}
+            <tr>
+              <td>{{ task.id }}</td>
+              <td>{{ task.application_id }}</td>
+              <td>{{ task.stage }}</td>
+              <td>{{ task.priority }}</td>
+              <td>{{ task.sla_due_at }}</td>
+              <td>{{ task.status }}</td>
+              <td>{{ task.assignee or '-' }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="7">No workflow tasks available.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel wide">
+    <h2>Monthly Trend Graph</h2>
+    <div class="comparison-grid">
+      {% for item in data.monthly_trend %}
+        <article class="comparison-card">
+          <strong>{{ item.label }}</strong>
+          <p>Approved {{ item.approved }}</p>
+          <p>Manual Review {{ item.manual_review }}</p>
+          <p>Rejected {{ item.rejected }}</p>
+        </article>
+      {% else %}
+        <article class="comparison-card"><p>No trend data yet.</p></article>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="panel stats-panel">
+    <h2>Rejection Analytics</h2>
+    <div class="risk-list">
+      {% for item in data.rejection_analytics %}
+        <article>
+          <div><strong>{{ item.label }}</strong><span>Aggregate signal</span></div>
+          <em>{{ item.value }}</em>
+        </article>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="panel wide">
+    <h2>Risk Heatmap</h2>
+    <div class="comparison-grid">
+      {% for item in data.heatmap %}
+        <article class="comparison-card heat {{ item.risk|lower|replace(' ', '-') }}">
+          <strong>{{ item.label }}</strong>
+          <p>Risk {{ item.risk }}</p>
+          <p>Approval {{ item.approval_probability }}%</p>
+          <p>Confidence {{ item.recommendation_confidence }}%</p>
+          <p>Fraud {{ item.fraud_probability }}%</p>
+        </article>
+      {% else %}
+        <article class="comparison-card"><p>No heatmap data yet.</p></article>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="panel wide">
+    <h2>Avg CIBIL Graph</h2>
+    <div class="comparison-grid">
+      {% for item in data.avg_cibil_graph %}
+        <article class="comparison-card">
+          <strong>{{ item.label }}</strong>
+          <p>{{ item.value }} cases</p>
+        </article>
+      {% else %}
+        <article class="comparison-card"><p>No CIBIL band data yet.</p></article>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="panel wide">
+    <h2>Underwriter Work Queue</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Case</th><th>User</th><th>Requested</th><th>Eligible</th><th>Safer</th><th>Risk</th><th>Approval</th><th>Approval %</th><th>OCR</th><th>Confidence</th><th>Remarks</th><th>Underwriter Action</th></tr></thead>
+        <tbody>
+          {% for row in data.rows %}
+            <tr>
+              <td>{{ row.case_id }}</td>
+              <td>{{ row.username }}</td>
+              <td>{{ '%.0f'|format(row.requested_amount) }}</td>
+              <td>{{ '%.0f'|format(row.eligible_amount) }}</td>
+              <td>{{ '%.0f'|format(row.suggested_safer_amount) }}</td>
+              <td>{{ row.risk_level }}</td>
+              <td>{{ row.approval_status }}</td>
+              <td>{{ row.approval_probability_pct }}%</td>
+              <td>{{ '%.0f'|format(row.ocr_score or 0) }}</td>
+              <td>{{ '%.0f'|format((row.recommendation_confidence or 0) * 100) }}%</td>
+              <td>{{ row.explanation }}</td>
+              <td>
+                <form method="post" action="{{ url_for('admin_underwriting_case_remark', case_id=row.case_id) }}" class="inline-form">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <input name="remark" maxlength="240" class="small-input" placeholder="remark">
+                  <select name="escalate">
+                    <option value="no" selected>remark</option>
+                    <option value="yes">escalate</option>
+                  </select>
+                  <button class="btn tiny" type="submit">Save</button>
+                </form>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="12">No underwriting reviews found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
+{% endblock %}

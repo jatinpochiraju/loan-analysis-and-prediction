@@ -7,7 +7,7 @@
     <p class="small-muted">Manage portal/mobile/agent engagement activities and campaigns.</p>
     <form method="post" action="{{ url_for('admin_digital_event') }}" class="form-grid">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <label><span>Channel</span><select name="channel"><option>portal</option><option>mobile</option><option>agent-app</option><option>email</option><option>sms</option></select></label>
+      <label><span>Channel</span><select name="channel"><option>portal</option><option>mobile</option><option>agent-app</option><option>email</option></select></label>
       <label><span>Event Type</span><input name="event_type" placeholder="offer_opened"></label>
       <label><span>Metadata</span><input name="metadata" placeholder='{"campaign":"spring"}'></label>
       <button class="btn" type="submit">Log Event</button>

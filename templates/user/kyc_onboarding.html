@@ -1,0 +1,167 @@
+{% extends 'base.html' %}
+{% block title %}KYC Journey | LoanShield{% endblock %}
+{% block body %}
+<main class="page dash-grid">
+  <section class="panel wide">
+    <div class="row-between">
+      <div>
+        <h1>Mock KYC + Document Journey</h1>
+        <p>Personal details, employment details, document upload, OCR verification, risk review, and final advisory decision.</p>
+      </div>
+      <a class="btn ghost" href="{{ url_for('user_dashboard') }}">Back to Dashboard</a>
+    </div>
+    <div class="step-strip">
+      {% for step, label in step_labels.items() %}
+        <article class="step-card {{ 'active' if case_row.onboarding_step >= step else '' }}">
+          <span>Step {{ step }}</span>
+          <strong>{{ label }}</strong>
+        </article>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="panel form-panel">
+    <h2>1. Personal Details</h2>
+    <form method="post" class="form-grid">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="action" value="save_personal">
+      <label><span>Full Name</span><input name="full_name" value="{{ case_row.full_name }}" required></label>
+      <label><span>Email</span><input name="email" value="{{ case_row.email }}" required></label>
+      <label><span>Phone</span><input name="phone" value="{{ case_row.phone }}" required></label>
+      <label><span>PAN</span><input name="pan_number" value="{{ case_row.pan_number }}" maxlength="10" required></label>
+      <label><span>Aadhaar Last 4</span><input name="aadhaar_last4" value="{{ case_row.aadhaar_last4 }}" maxlength="4" required></label>
+      <button class="btn" type="submit">Save Personal Details</button>
+    </form>
+  </section>
+
+  <section class="panel form-panel">
+    <h2>2. Employment Details</h2>
+    <form method="post" class="form-grid">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="action" value="save_employment">
+      <label><span>Company Name</span><input name="company_name" value="{{ case_row.company_name }}" required></label>
+      <label><span>Designation</span><input name="designation" value="{{ case_row.designation }}" required></label>
+      <label><span>Years of Experience</span><input name="years_of_experience" type="number" step="0.1" value="{{ case_row.years_of_experience }}" required></label>
+      <label><span>Monthly Salary</span><input name="monthly_salary" type="number" step="0.01" value="{{ case_row.monthly_salary }}" required></label>
+      <label><span>Requested Loan</span><input name="requested_loan" type="number" step="0.01" value="{{ case_row.requested_loan }}" required></label>
+      <label><span>Existing EMI</span><input name="existing_emi" type="number" step="0.01" value="{{ case_row.existing_emi }}" required></label>
+      <button class="btn" type="submit">Save Employment Details</button>
+    </form>
+  </section>
+
+  <section class="panel wide">
+    <div class="row-between">
+      <div>
+        <h2>3. Document Upload</h2>
+        <p class="small-muted">Required uploads: {{ required_docs|join(', ') }}</p>
+      </div>
+    </div>
+    <form method="post" enctype="multipart/form-data" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="action" value="upload_document">
+      <select name="doc_type" required>
+        <option value="">Select document type</option>
+        {% for _, label in doc_aliases.items() %}
+          <option value="{{ label }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+      <input type="file" name="document_file" accept=".txt,.csv,.md,.json,.pdf,.doc,.docx,.jpg,.jpeg,.png,.svg" required>
+      <button class="btn" type="submit">Upload</button>
+    </form>
+    <div class="table-wrap" style="margin-top:0.9rem;">
+      <table>
+        <thead><tr><th>Doc</th><th>Status</th><th>Quality</th><th>Verification</th><th>Mismatches</th></tr></thead>
+        <tbody>
+          {% for doc in case_row.documents %}
+            <tr>
+              <td>{{ doc.doc_type }}</td>
+              <td>{{ doc.status }}</td>
+              <td>{{ doc.quality_label }}</td>
+              <td>{{ '%.0f'|format(doc.verification_score or 0) }}</td>
+              <td>{{ doc.mismatch_flags }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="5">No documents uploaded yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel wide">
+    <div class="row-between">
+      <div>
+        <h2>4-6. OCR, Risk Review, Final Decision</h2>
+        <p class="small-muted">Quality labels: good, blurred, noisy, low_contrast, skewed, insufficient_text.</p>
+      </div>
+      <form method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="action" value="run_review">
+        <button class="btn" type="submit">Run OCR + Underwriting Review</button>
+      </form>
+    </div>
+    <div class="metric-cards compact">
+      <article><span>KYC Status</span><strong>{{ case_row.kyc_status }}</strong></article>
+      <article><span>OCR Status</span><strong>{{ case_row.ocr_status }}</strong></article>
+      <article><span>Verification Score</span><strong>{{ '%.0f'|format(case_row.verification_score or 0) }}</strong></article>
+      <article><span>Risk Level</span><strong>{{ case_row.risk_level }}</strong></article>
+      <article><span>Approval Status</span><strong>{{ case_row.approval_status }}</strong></article>
+      <article><span>Quality</span><strong>{{ case_row.quality_label }}</strong></article>
+      <article><span>CIBIL Band</span><strong>{{ case_row.cibil_band }}</strong></article>
+      <article><span>Status Flow</span><strong>{{ case_row.status_flow }}</strong></article>
+    </div>
+    {% if case_row.review %}
+      <div class="metric-cards compact" style="margin-top:0.8rem;">
+        <article><span>Requested Amount</span><strong>{{ '%.2f'|format(case_row.review.requested_amount or 0) }}</strong></article>
+        <article><span>Eligible Amount</span><strong>{{ '%.2f'|format(case_row.review.eligible_amount or 0) }}</strong></article>
+        <article><span>Safer Amount</span><strong>{{ '%.2f'|format(case_row.review.suggested_safer_amount or 0) }}</strong></article>
+        <article><span>Safe Loan</span><strong>{{ '%.2f'|format(case_row.review.safe_loan_amount or 0) }}</strong></article>
+        <article><span>Recommendation Confidence</span><strong>{{ '%.0f'|format((case_row.review.recommendation_confidence or 0) * 100) }}%</strong></article>
+      </div>
+      <p style="margin-top:0.7rem;"><strong>Explanation:</strong> {{ case_row.review.explanation }}</p>
+    {% endif %}
+  </section>
+
+  <section class="panel wide">
+    <h2>Smart Loan Assistant + Plan Comparison</h2>
+    <div class="comparison-grid">
+      {% for plan in plan_comparisons %}
+        <article class="comparison-card {{ 'best' if plan.best_match else '' }}">
+          <div class="row-between">
+            <strong>{{ plan.name }}</strong>
+            {% if plan.best_match %}<span class="chip ok">Best match</span>{% endif %}
+          </div>
+          <p>Amount {{ '%.0f'|format(plan.loan_amount) }}</p>
+          <p>Tenure {{ plan.tenure_months }} months | EMI {{ '%.2f'|format(plan.emi) }}</p>
+          <p>Interest {{ '%.2f'|format(plan.interest_rate) }}%</p>
+          <p>Eligibility {{ plan.eligibility_pct }}% | Approval {{ plan.approval_probability_pct }}%</p>
+        </article>
+      {% else %}
+        <article class="comparison-card"><p>Save salary and requested loan details to see plan comparisons.</p></article>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="panel wide">
+    <h2>Audit Trail + Document Timeline</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Timestamp</th><th>Action</th><th>Actor</th><th>Status Flow</th><th>Remarks</th></tr></thead>
+        <tbody>
+          {% for item in case_row.timeline %}
+            <tr>
+              <td>{{ item.timestamp }}</td>
+              <td>{{ item.action }}</td>
+              <td>{{ item.actor }}</td>
+              <td>{{ item.status_flow }}</td>
+              <td>{{ item.remarks }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="5">No audit trail entries yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
+{% endblock %}

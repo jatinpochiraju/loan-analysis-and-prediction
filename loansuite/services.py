@@ -4,7 +4,10 @@ import hashlib
 import json
 import math
 import os
+import random
 import re
+import subprocess
+import tempfile
 import uuid
 import datetime as dt
 from typing import Any, Dict, List, Tuple
@@ -12,6 +15,1181 @@ from typing import Any, Dict, List, Tuple
 from .db import get_conn, sync_application_to_cloud, utcnow
 
 REGIONS = ["North", "South", "East", "West", "Central"]
+KYC_REQUIRED_DOCS = [
+    "PAN Card",
+    "Salary Slip 1",
+    "Salary Slip 2",
+    "Salary Slip 3",
+    "Joining Letter",
+    "Bank Statement (6 months)",
+    "Selfie Image",
+]
+KYC_STEP_LABELS = {
+    1: "Personal details",
+    2: "Employment details",
+    3: "Document upload",
+    4: "OCR verification",
+    5: "Risk review",
+    6: "Final decision",
+}
+KYC_STATUS_SEQUENCE = ["pending", "verified", "manual_review", "rejected", "approved"]
+QUALITY_LABELS = {"good", "blurred", "noisy", "low_contrast", "skewed", "insufficient_text"}
+DOC_TYPE_ALIASES = {
+    "pan_card": "PAN Card",
+    "salary_slip_1": "Salary Slip 1",
+    "salary_slip_2": "Salary Slip 2",
+    "salary_slip_3": "Salary Slip 3",
+    "joining_letter": "Joining Letter",
+    "bank_statement": "Bank Statement (6 months)",
+    "selfie_image": "Selfie Image",
+}
+DEMO_DOC_PACK = [
+    ("PAN Card", "pan_card_n_v_jatin_pochiraju.pdf", "PAN Card"),
+    ("Salary Slip 1", "salary_slip_1_n_v_jatin_pochiraju.pdf", "Salary Slip 1"),
+    ("Salary Slip 2", "salary_slip_2_n_v_jatin_pochiraju.pdf", "Salary Slip 2"),
+    ("Salary Slip 3", "salary_slip_3_n_v_jatin_pochiraju.pdf", "Salary Slip 3"),
+    ("Joining Letter", "joining_letter_n_v_jatin_pochiraju.pdf", "Joining Letter"),
+    ("Bank Statement (6 months)", "sbi_sample_bank_statement_n_v_jatin_pochiraju.pdf", "Bank Statement (6 months)"),
+    ("Collateral Proof", "collateral_proof_n_v_jatin_pochiraju.pdf", "Collateral Proof"),
+    ("Selfie Image", "selfie_placeholder_n_v_jatin_pochiraju.svg", "Selfie Image"),
+]
+
+
+def _json_loads(value: Any, default: Any) -> Any:
+    if value in (None, ""):
+        return default
+    try:
+        return json.loads(value)
+    except Exception:
+        return default
+
+
+def _slug(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", (value or "").strip().lower()).strip("-") or "item"
+
+
+def _doc_storage_dir(db_path: str) -> str:
+    root = os.path.dirname(os.path.abspath(db_path))
+    path = os.path.join(root, "static", "generated_docs")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _demo_doc_dir(db_path: str) -> str:
+    root = os.path.dirname(os.path.abspath(db_path))
+    path = os.path.join(root, "generated_docs")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _write_demo_pdf(path: str, lines: List[str]):
+    safe_lines = []
+    for line in lines:
+        safe = str(line).replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+        safe_lines.append(f"({safe}) Tj")
+    content = "BT /F1 12 Tf 50 760 Td 0 -18 Td " + " T* ".join(safe_lines) + " ET"
+    stream = content.encode("latin-1", errors="ignore")
+    pdf = (
+        b"%PDF-1.4\n"
+        b"1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+        b"2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj\n"
+        b"3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 595 842]/Resources<</Font<</F1 4 0 R>>>>/Contents 5 0 R>>endobj\n"
+        b"4 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n"
+        + f"5 0 obj<</Length {len(stream)}>>stream\n".encode("ascii")
+        + stream
+        + b"\nendstream\nendobj\nxref\n0 6\n0000000000 65535 f \n"
+        b"0000000010 00000 n \n0000000063 00000 n \n0000000120 00000 n \n0000000246 00000 n \n0000000316 00000 n \n"
+        b"trailer<</Size 6/Root 1 0 R>>\nstartxref\n"
+        + str(316 + len(stream)).encode("ascii")
+        + b"\n%%EOF\n"
+    )
+    with open(path, "wb") as f:
+        f.write(pdf)
+
+
+def _safe_ratio(numerator: float, denominator: float) -> float:
+    return float(numerator) / max(1.0, float(denominator))
+
+
+def _risk_label(score: float) -> str:
+    if score >= 75:
+        return "Low"
+    if score >= 55:
+        return "Medium"
+    return "High"
+
+
+def _approval_probability_from_review(review: Dict[str, Any]) -> float:
+    status = str(review.get("approval_status", "manual_review"))
+    base = {"approved": 0.84, "manual_review": 0.56, "rejected": 0.18}.get(status, 0.4)
+    risk = str(review.get("risk_level", "Medium"))
+    if risk == "High":
+        base -= 0.14
+    elif risk == "Low":
+        base += 0.08
+    return round(max(0.01, min(0.99, base)), 2)
+
+
+def derive_application_credit_score(payload: Dict[str, Any]) -> Dict[str, Any]:
+    annual_income = float(payload.get("current_salary") or 0.0)
+    monthly_income = annual_income / 12.0 if annual_income else 0.0
+    monthly_expenditure = float(payload.get("monthly_expenditure") or 0.0)
+    existing_emi = float(payload.get("existing_emi") or 0.0)
+    requested_amount = float(payload.get("requested_amount") or 0.0)
+    employment_years = float(payload.get("employment_years") or 0.0)
+    collateral_value = float(payload.get("collateral_value") or 0.0)
+
+    dti = _safe_ratio(monthly_expenditure + existing_emi, monthly_income or 1.0)
+    lti = _safe_ratio(requested_amount, annual_income or 1.0)
+    collateral_cover = _safe_ratio(collateral_value, requested_amount or 1.0)
+
+    score = 690.0
+    score += min(85.0, max(0.0, (annual_income - 180000.0) / 1200000.0 * 85.0))
+    score += min(45.0, max(0.0, employment_years / 10.0 * 45.0))
+    score += min(40.0, max(0.0, min(collateral_cover, 1.0) * 40.0))
+    score -= min(170.0, max(0.0, (dti - 0.22) * 240.0))
+    score -= min(95.0, max(0.0, (lti - 0.35) * 38.0))
+
+    rounded = max(300, min(900, int(round(score))))
+    factors = {
+        "annual_income": round(annual_income, 2),
+        "monthly_income": round(monthly_income, 2),
+        "dti": round(dti, 3),
+        "lti": round(lti, 3),
+        "collateral_cover": round(collateral_cover, 3),
+        "employment_years": round(employment_years, 2),
+        "source": "system_calculated",
+    }
+    return {"score": rounded, "factors": factors}
+
+
+def _score_band_from_application(application: Dict[str, Any] | None) -> Tuple[str, str]:
+    score = int((application or {}).get("credit_score") or 0)
+    if score >= 750:
+        return "excellent", f"Existing credit score output is {score}, which maps to an excellent repayment band."
+    if score >= 700:
+        return "good", f"Existing credit score output is {score}, which maps to a good repayment band."
+    if score >= 650:
+        return "fair", f"Existing credit score output is {score}, which maps to a fair band with tighter approval controls."
+    if score > 0:
+        return "low", f"Existing credit score output is {score}, which maps to a low band and raises review intensity."
+    return "unavailable", "No linked application credit score is available yet."
+
+
+def _latest_linked_application(db_path: str, user_id: int) -> Dict[str, Any] | None:
+    with get_conn(db_path) as conn:
+        return conn.execute(
+            """
+            SELECT *
+            FROM loan_applications
+            WHERE user_id = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (user_id,),
+        ).fetchone()
+
+
+def _calculate_quality(file_bytes: bytes, text: str) -> Dict[str, Any]:
+    size = len(file_bytes)
+    unique = len(set(file_bytes[:1024])) if file_bytes else 0
+    alpha = sum(1 for ch in text if ch.isalpha())
+    spaces = text.count(" ")
+    variance = unique / max(1, min(size, 1024))
+    density = alpha / max(1, len(text))
+    contrast_score = round(min(1.0, (variance * 2.2)), 3)
+    blur_score = round(max(0.0, 1.0 - density * 2.4), 3)
+    noise_score = round(max(0.0, min(1.0, _safe_ratio(sum(1 for ch in text if not ch.isalnum() and not ch.isspace()), max(1, len(text))), 0.18)), 3)
+    skew_angle = round((sum(file_bytes[:64]) % 19) - 9 if file_bytes else 0, 2)
+    quality = "good"
+    if alpha < 25 or len(text.strip()) < 32:
+        quality = "insufficient_text"
+    elif contrast_score < 0.22:
+        quality = "low_contrast"
+    elif abs(skew_angle) > 7:
+        quality = "skewed"
+    elif noise_score > 0.72:
+        quality = "noisy"
+    elif blur_score > 0.72 or spaces < 3:
+        quality = "blurred"
+    return {
+        "label": quality,
+        "details": {
+            "blur_score": blur_score,
+            "noise_score": noise_score,
+            "contrast_score": contrast_score,
+            "skew_angle": skew_angle,
+            "text_density": round(density, 3),
+            "character_count": len(text),
+        },
+    }
+
+
+def _parse_ocr_fields(doc_type: str, text: str, case_row: Dict[str, Any]) -> Dict[str, Any]:
+    upper = text.upper()
+    fields: Dict[str, Any] = {
+        "employeeName": case_row.get("full_name", ""),
+        "companyName": case_row.get("company_name", ""),
+        "grossSalary": float(case_row.get("monthly_salary") or 0),
+        "netSalary": round(float(case_row.get("monthly_salary") or 0) * 0.89, 2),
+        "payPeriod": "",
+        "joiningDate": "",
+        "salaryCredits": [],
+        "panNumber": case_row.get("pan_number", ""),
+    }
+    pan_match = re.search(r"\b([A-Z]{5}[0-9]{4}[A-Z])\b", upper)
+    if pan_match:
+        fields["panNumber"] = pan_match.group(1)
+    company_patterns = [
+        r"(?:COMPANY|EMPLOYER|ORGANISATION|ORGANIZATION)\s*[:\-]\s*([A-Z0-9 &.,-]{3,80})",
+        r"(?:M/S|M\.S\.)\s*([A-Z0-9 &.,-]{3,80})",
+    ]
+    for pattern in company_patterns:
+        match = re.search(pattern, upper)
+        if match:
+            fields["companyName"] = match.group(1).strip(" .,-")
+            break
+    name_match = re.search(r"(?:EMPLOYEE|NAME)\s*[:\-]\s*([A-Z ]{4,80})", upper)
+    if name_match:
+        fields["employeeName"] = name_match.group(1).strip()
+    join_match = re.search(r"(?:JOINING DATE|DOJ|DATE OF JOINING)\s*[:\-]\s*([0-9/\-]{6,16})", upper)
+    if join_match:
+        fields["joiningDate"] = join_match.group(1)
+    period_match = re.search(r"(?:PAY PERIOD|SALARY MONTH|MONTH)\s*[:\-]\s*([A-Z0-9/\- ]{3,24})", upper)
+    if period_match:
+        fields["payPeriod"] = period_match.group(1).strip()
+    gross_match = re.search(r"(?:GROSS SALARY|GROSS PAY|CTC)\s*[:\-]?\s*([0-9][0-9,]*(?:\.[0-9]+)?)", upper)
+    if gross_match:
+        fields["grossSalary"] = float(gross_match.group(1).replace(",", ""))
+    net_match = re.search(r"(?:NET SALARY|NET PAY|TAKE HOME)\s*[:\-]?\s*([0-9][0-9,]*(?:\.[0-9]+)?)", upper)
+    if net_match:
+        fields["netSalary"] = float(net_match.group(1).replace(",", ""))
+    credits = re.findall(r"(?:SALARY CREDIT|CREDIT|SALARY)\s*[:\-]?\s*([0-9][0-9,]*(?:\.[0-9]+)?)", upper)
+    if credits:
+        fields["salaryCredits"] = [float(item.replace(",", "")) for item in credits[:8]]
+    if "bank statement" in doc_type.lower() and not fields["salaryCredits"]:
+        number_matches = re.findall(r"\b([0-9]{4,7}(?:\.[0-9]{1,2})?)\b", upper)
+        fields["salaryCredits"] = [float(item) for item in number_matches[:6]]
+    return fields
+
+
+def _extract_uploaded_text(filename: str, file_bytes: bytes) -> str:
+    if filename.lower().endswith(".pdf") or file_bytes.startswith(b"%PDF"):
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=True) as tmp:
+                tmp.write(file_bytes)
+                tmp.flush()
+                result = subprocess.run(
+                    ["pdftotext", "-layout", tmp.name, "-"],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=8,
+                )
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return file_bytes.decode("utf-8", errors="ignore")
+
+
+def _verification_breakdown(case_row: Dict[str, Any], parsed_fields: Dict[str, Any]) -> Dict[str, Any]:
+    monthly_salary = float(case_row.get("monthly_salary") or 0)
+    stated_company = str(case_row.get("company_name", "")).strip().lower()
+    stated_exp = float(case_row.get("years_of_experience") or 0)
+    stated_name = str(case_row.get("full_name", "")).strip().lower()
+    gross = float(parsed_fields.get("grossSalary") or parsed_fields.get("netSalary") or 0)
+    company = str(parsed_fields.get("companyName", "")).strip().lower()
+    joining_date = str(parsed_fields.get("joiningDate", "")).strip()
+    credits = [float(x) for x in parsed_fields.get("salaryCredits", []) if float(x) > 0]
+    salary_match = monthly_salary > 0 and abs(gross - monthly_salary) / max(1.0, monthly_salary) <= 0.15
+    company_match = bool(stated_company and company and stated_company in company)
+    experience_match = stated_exp <= 0
+    if joining_date:
+        year_match = re.search(r"(20[0-9]{2})", joining_date)
+        if year_match:
+            years = max(0.0, dt.datetime.utcnow().year - int(year_match.group(1)))
+            experience_match = abs(years - stated_exp) <= 1.5 if stated_exp > 0 else True
+    recurring_salary = bool(credits) and len([amt for amt in credits if monthly_salary <= 0 or abs(amt - monthly_salary) / max(1.0, monthly_salary) <= 0.2]) >= min(3, len(credits))
+    employee_match = not stated_name or stated_name in str(parsed_fields.get("employeeName", "")).strip().lower()
+    score = 0
+    if salary_match:
+        score += 30
+    if company_match:
+        score += 25
+    if experience_match:
+        score += 20
+    if recurring_salary:
+        score += 25
+    mismatch_flags = []
+    if not employee_match:
+        mismatch_flags.append("employee_name_mismatch")
+    if not salary_match:
+        mismatch_flags.append("salary_mismatch")
+    if not company_match:
+        mismatch_flags.append("company_mismatch")
+    if not experience_match:
+        mismatch_flags.append("experience_mismatch")
+    if not recurring_salary:
+        mismatch_flags.append("salary_credit_inconsistency")
+    return {
+        "score": score,
+        "salary_match": salary_match,
+        "company_match": company_match,
+        "experience_match": experience_match,
+        "recurring_salary": recurring_salary,
+        "mismatch_flags": mismatch_flags,
+    }
+
+
+def create_or_get_kyc_case(db_path: str, user_id: int, application_id: int | None = None) -> Dict[str, Any]:
+    with get_conn(db_path) as conn:
+        if application_id:
+            row = conn.execute(
+                "SELECT * FROM kyc_cases WHERE application_id = ? ORDER BY id DESC LIMIT 1",
+                (application_id,),
+            ).fetchone()
+            if row:
+                return row
+        row = conn.execute(
+            """
+            SELECT *
+            FROM kyc_cases
+            WHERE user_id = ? AND approval_status = 'pending'
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (user_id,),
+        ).fetchone()
+        if row:
+            if application_id and not row.get("application_id"):
+                conn.execute(
+                    "UPDATE kyc_cases SET application_id = ?, updated_at = ? WHERE id = ?",
+                    (application_id, utcnow(), row["id"]),
+                )
+                conn.commit()
+                row = conn.execute("SELECT * FROM kyc_cases WHERE id = ?", (row["id"],)).fetchone()
+            return row
+        user = conn.execute(
+            "SELECT id, full_name, email, phone FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+        now = utcnow()
+        conn.execute(
+            """
+            INSERT INTO kyc_cases (
+                user_id, application_id, onboarding_step, full_name, email, phone, created_at, updated_at
+            ) VALUES (?, ?, 1, ?, ?, ?, ?, ?)
+            """,
+            (
+                user_id,
+                application_id,
+                (user or {}).get("full_name", ""),
+                (user or {}).get("email", ""),
+                (user or {}).get("phone", ""),
+                now,
+                now,
+            ),
+        )
+        conn.commit()
+        return conn.execute("SELECT * FROM kyc_cases ORDER BY id DESC LIMIT 1").fetchone()
+
+
+def log_case_audit(
+    db_path: str,
+    case_id: int | None,
+    application_id: int | None,
+    action: str,
+    actor: str,
+    remarks: str,
+    status_flow: str,
+):
+    with get_conn(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO decision_audit_ext (case_id, application_id, action, actor, remarks, status_flow, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (case_id, application_id, action, actor, remarks, status_flow, utcnow()),
+        )
+        conn.commit()
+
+
+def update_kyc_case_profile(db_path: str, case_id: int, payload: Dict[str, Any], step: int) -> Dict[str, Any]:
+    with get_conn(db_path) as conn:
+        current = conn.execute("SELECT * FROM kyc_cases WHERE id = ?", (case_id,)).fetchone()
+        if not current:
+            raise ValueError("KYC case not found")
+        merged = dict(current)
+        merged.update(payload)
+        conn.execute(
+            """
+            UPDATE kyc_cases
+            SET onboarding_step = ?,
+                full_name = ?,
+                email = ?,
+                phone = ?,
+                pan_number = ?,
+                aadhaar_last4 = ?,
+                company_name = ?,
+                designation = ?,
+                years_of_experience = ?,
+                monthly_salary = ?,
+                requested_loan = ?,
+                existing_emi = ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                max(int(step), int(current.get("onboarding_step") or 1)),
+                str(merged.get("full_name", ""))[:120],
+                str(merged.get("email", ""))[:160],
+                str(merged.get("phone", ""))[:30],
+                str(merged.get("pan_number", ""))[:20],
+                str(merged.get("aadhaar_last4", ""))[:4],
+                str(merged.get("company_name", ""))[:120],
+                str(merged.get("designation", ""))[:80],
+                float(merged.get("years_of_experience") or 0),
+                float(merged.get("monthly_salary") or 0),
+                float(merged.get("requested_loan") or 0),
+                float(merged.get("existing_emi") or 0),
+                utcnow(),
+                case_id,
+            ),
+        )
+        conn.commit()
+        return conn.execute("SELECT * FROM kyc_cases WHERE id = ?", (case_id,)).fetchone()
+
+
+def upload_kyc_case_document(
+    db_path: str,
+    case_id: int,
+    doc_type: str,
+    filename: str,
+    file_bytes: bytes,
+) -> Dict[str, Any]:
+    with get_conn(db_path) as conn:
+        case_row = conn.execute("SELECT * FROM kyc_cases WHERE id = ?", (case_id,)).fetchone()
+        if not case_row:
+            raise ValueError("KYC case not found")
+    text = _extract_uploaded_text(filename, file_bytes)
+    quality = _calculate_quality(file_bytes, text)
+    parsed_fields = _parse_ocr_fields(doc_type, text, case_row)
+    verification = _verification_breakdown(case_row, parsed_fields)
+    status = "manual_review" if quality["label"] != "good" or verification["score"] < 70 else "verified"
+    storage_name = f"case-{case_id}-{_slug(doc_type)}-{_slug(filename)}"
+    storage_path = os.path.join(_doc_storage_dir(db_path), storage_name)
+    with open(storage_path, "wb") as f:
+        f.write(file_bytes)
+    with get_conn(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO kyc_case_documents (
+                case_id, application_id, doc_type, file_name, storage_path, mime_type, extracted_text,
+                parsed_fields, verification_score, mismatch_flags, quality_label, quality_details, status, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                case_id,
+                case_row.get("application_id"),
+                doc_type,
+                filename,
+                storage_path,
+                "",
+                text[:4000],
+                json.dumps(parsed_fields, separators=(",", ":")),
+                float(verification["score"]),
+                json.dumps(verification["mismatch_flags"], separators=(",", ":")),
+                quality["label"],
+                json.dumps(quality["details"], separators=(",", ":")),
+                status,
+                utcnow(),
+            ),
+        )
+        if case_row.get("application_id"):
+            conn.execute(
+                """
+                INSERT INTO document_intelligence (
+                    application_id, ocr_payload, extracted_salary, extracted_region, mismatch_score, status,
+                    created_at, extracted_text, parsed_fields_json, verification_score, mismatch_flags_json,
+                    quality_label, quality_details
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    case_row["application_id"],
+                    json.dumps({"doc_type": doc_type, "filename": filename}, separators=(",", ":")),
+                    float(parsed_fields.get("grossSalary") or parsed_fields.get("netSalary") or 0),
+                    case_row.get("company_name", ""),
+                    round(len(verification["mismatch_flags"]) / 5.0, 3),
+                    "Mismatch" if status == "manual_review" else "Clear",
+                    utcnow(),
+                    text[:4000],
+                    json.dumps(parsed_fields, separators=(",", ":")),
+                    float(verification["score"]),
+                    json.dumps(verification["mismatch_flags"], separators=(",", ":")),
+                    quality["label"],
+                    json.dumps(quality["details"], separators=(",", ":")),
+                ),
+            )
+        conn.execute(
+            """
+            UPDATE kyc_cases
+            SET onboarding_step = CASE WHEN onboarding_step < 4 THEN 4 ELSE onboarding_step END,
+                ocr_status = ?,
+                verification_score = CASE WHEN verification_score < ? THEN ? ELSE verification_score END,
+                quality_label = CASE WHEN ? != 'good' THEN ? ELSE quality_label END,
+                kyc_status = CASE WHEN ? = 'manual_review' THEN 'manual_review' ELSE kyc_status END,
+                status_flow = CASE WHEN ? = 'manual_review' THEN 'manual_review' ELSE status_flow END,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                status,
+                float(verification["score"]),
+                float(verification["score"]),
+                quality["label"],
+                quality["label"],
+                status,
+                status,
+                utcnow(),
+                case_id,
+            ),
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM kyc_case_documents ORDER BY id DESC LIMIT 1").fetchone()
+    log_case_audit(
+        db_path,
+        case_id=case_id,
+        application_id=case_row.get("application_id"),
+        action="DOCUMENT_UPLOADED",
+        actor="system",
+        remarks=f"{doc_type} uploaded with quality={quality['label']} verification={verification['score']}",
+        status_flow="manual_review" if status == "manual_review" else "ocr_verified",
+    )
+    return row
+
+
+def get_kyc_case_documents(db_path: str, case_id: int) -> List[Dict[str, Any]]:
+    with get_conn(db_path) as conn:
+        return conn.execute(
+            """
+            SELECT *
+            FROM kyc_case_documents
+            WHERE case_id = ?
+            ORDER BY id ASC
+            """,
+            (case_id,),
+        ).fetchall()
+
+
+def list_demo_document_pack(db_path: str) -> List[Dict[str, Any]]:
+    root = _demo_doc_dir(db_path)
+    rows: List[Dict[str, Any]] = []
+    for label, filename, doc_type in DEMO_DOC_PACK:
+        path = os.path.join(root, filename)
+        rows.append(
+            {
+                "label": label,
+                "doc_type": doc_type,
+                "file_name": filename,
+                "path": path,
+                "exists": os.path.exists(path),
+            }
+        )
+    return rows
+
+
+def import_demo_document_pack(db_path: str, case_id: int) -> Dict[str, Any]:
+    detail = get_case_detail(db_path, case_id)
+    if not detail:
+        raise ValueError("KYC case not found")
+    existing = {(row["doc_type"], row["file_name"]) for row in detail.get("documents", [])}
+    imported = 0
+    skipped = 0
+    for item in list_demo_document_pack(db_path):
+        if not item["exists"]:
+            skipped += 1
+            continue
+        key = (item["doc_type"], item["file_name"])
+        if key in existing:
+            skipped += 1
+            continue
+        with open(item["path"], "rb") as f:
+            upload_kyc_case_document(db_path, case_id, item["doc_type"], item["file_name"], f.read())
+        imported += 1
+    log_case_audit(
+        db_path,
+        case_id=case_id,
+        application_id=detail.get("application_id"),
+        action="DEMO_DOC_PACK_IMPORTED",
+        actor="system",
+        remarks=f"Imported {imported} demo docs; skipped {skipped}.",
+        status_flow=detail.get("status_flow", "submitted"),
+    )
+    return {"imported": imported, "skipped": skipped}
+
+
+def _latest_underwriting_review(db_path: str, case_id: int) -> Dict[str, Any] | None:
+    with get_conn(db_path) as conn:
+        return conn.execute(
+            "SELECT * FROM underwriting_reviews WHERE case_id = ? ORDER BY id DESC LIMIT 1",
+            (case_id,),
+        ).fetchone()
+
+
+def run_extended_underwriting(db_path: str, case_id: int) -> Dict[str, Any]:
+    with get_conn(db_path) as conn:
+        case_row = conn.execute("SELECT * FROM kyc_cases WHERE id = ?", (case_id,)).fetchone()
+        if not case_row:
+            raise ValueError("KYC case not found")
+        docs = conn.execute(
+            "SELECT * FROM kyc_case_documents WHERE case_id = ? ORDER BY id DESC",
+            (case_id,),
+        ).fetchall()
+    salary = float(case_row.get("monthly_salary") or 0)
+    emi = float(case_row.get("existing_emi") or 0)
+    experience = float(case_row.get("years_of_experience") or 0)
+    requested = float(case_row.get("requested_loan") or 0)
+    ocr_score = float(case_row.get("verification_score") or 0)
+    safe_loan = max(0.0, (0.4 * salary * 48) - (emi * 12))
+    eligible = safe_loan
+    approval_status = "approved"
+    risk_level = "Low"
+    remarks = []
+    if salary <= 0:
+        approval_status = "manual_review"
+        risk_level = "High"
+        remarks.append("Salary missing from KYC data.")
+    if emi > salary * 0.4:
+        approval_status = "manual_review"
+        risk_level = "High"
+        remarks.append("EMI exceeds 40% of salary.")
+    if ocr_score < 70:
+        approval_status = "manual_review"
+        risk_level = "Medium" if risk_level == "Low" else risk_level
+        remarks.append("OCR verification score below 70.")
+    if experience < 1:
+        eligible = min(eligible, safe_loan * 0.78)
+        risk_level = "Medium" if risk_level == "Low" else risk_level
+        remarks.append("Experience below 1 year; eligibility reduced.")
+    mismatch_flags = []
+    for doc in docs:
+        mismatch_flags.extend(_json_loads(doc.get("mismatch_flags"), []))
+        if doc.get("quality_label") != "good":
+            approval_status = "manual_review"
+            risk_level = "High"
+            remarks.append(f"{doc.get('doc_type')} quality requires manual review.")
+    if "salary_credit_inconsistency" in mismatch_flags:
+        approval_status = "rejected"
+        risk_level = "High"
+        remarks.append("Inconsistent bank salary credits detected.")
+    if case_row.get("kyc_status") in {"rejected", "manual_review"}:
+        approval_status = "manual_review" if case_row.get("kyc_status") == "manual_review" else "rejected"
+    suggested_safer_amount = max(0.0, min(eligible, safe_loan * 0.92))
+    if requested > eligible and approval_status == "approved":
+        risk_level = "Medium"
+        remarks.append("Requested amount exceeds safer eligible amount.")
+    confidence = max(0.15, min(0.98, (ocr_score / 100.0) * 0.45 + (0.35 if approval_status == "approved" else 0.18)))
+    if risk_level == "High":
+        confidence -= 0.12
+    with get_conn(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO underwriting_reviews (
+                case_id, application_id, requested_amount, eligible_amount, suggested_safer_amount,
+                safe_loan_amount, risk_level, approval_status, ocr_score, kyc_status,
+                explanation, recommendation_confidence, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                case_id,
+                case_row.get("application_id"),
+                requested,
+                round(max(0.0, eligible), 2),
+                round(suggested_safer_amount, 2),
+                round(safe_loan, 2),
+                risk_level,
+                approval_status,
+                ocr_score,
+                case_row.get("kyc_status", "pending"),
+                " ".join(dict.fromkeys(remarks)) or "Case passed underwriting extension checks.",
+                round(confidence, 2),
+                utcnow(),
+            ),
+        )
+        status_flow = "underwriting_review" if approval_status == "manual_review" else {
+            "approved": "approved",
+            "rejected": "rejected",
+        }.get(approval_status, "underwriting_review")
+        conn.execute(
+            """
+            UPDATE kyc_cases
+            SET onboarding_step = CASE WHEN onboarding_step < 6 THEN 6 ELSE onboarding_step END,
+                risk_level = ?,
+                approval_status = ?,
+                eligible_amount = ?,
+                suggested_safer_amount = ?,
+                status_flow = ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (risk_level, approval_status, round(max(0.0, eligible), 2), round(suggested_safer_amount, 2), status_flow, utcnow(), case_id),
+        )
+        conn.commit()
+        review = conn.execute("SELECT * FROM underwriting_reviews ORDER BY id DESC LIMIT 1").fetchone()
+    log_case_audit(
+        db_path,
+        case_id=case_id,
+        application_id=case_row.get("application_id"),
+        action="UNDERWRITING_REVIEW",
+        actor="system",
+        remarks=review["explanation"],
+        status_flow={"approved": "approved", "rejected": "rejected", "manual_review": "underwriting_review"}.get(review["approval_status"], "underwriting_review"),
+    )
+    return review
+
+
+def sync_case_with_application(db_path: str, case_id: int, application: Dict[str, Any]) -> Dict[str, Any]:
+    band, explanation = _score_band_from_application(application)
+    with get_conn(db_path) as conn:
+        current = conn.execute("SELECT * FROM kyc_cases WHERE id = ?", (case_id,)).fetchone()
+        if not current:
+            raise ValueError("KYC case not found")
+        conn.execute(
+            """
+            UPDATE kyc_cases
+            SET application_id = ?,
+                monthly_salary = CASE WHEN monthly_salary <= 0 THEN ? ELSE monthly_salary END,
+                requested_loan = CASE WHEN requested_loan <= 0 THEN ? ELSE requested_loan END,
+                existing_emi = CASE WHEN existing_emi <= 0 THEN ? ELSE existing_emi END,
+                years_of_experience = CASE WHEN years_of_experience <= 0 THEN ? ELSE years_of_experience END,
+                cibil_band = ?,
+                cibil_explanation = ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                application["id"],
+                float(application.get("current_salary") or 0),
+                float(application.get("requested_amount") or 0),
+                float(application.get("existing_emi") or 0),
+                float(application.get("employment_years") or 0),
+                band,
+                explanation,
+                utcnow(),
+                case_id,
+            ),
+        )
+        conn.commit()
+        return conn.execute("SELECT * FROM kyc_cases WHERE id = ?", (case_id,)).fetchone()
+
+
+def get_case_timeline(db_path: str, case_id: int) -> List[Dict[str, Any]]:
+    with get_conn(db_path) as conn:
+        return conn.execute(
+            """
+            SELECT created_at AS timestamp, action, actor, remarks, status_flow
+            FROM decision_audit_ext
+            WHERE case_id = ?
+            ORDER BY id DESC
+            """,
+            (case_id,),
+        ).fetchall()
+
+
+def get_case_detail(db_path: str, case_id: int) -> Dict[str, Any] | None:
+    with get_conn(db_path) as conn:
+        case_row = conn.execute(
+            """
+            SELECT kc.*, u.username
+            FROM kyc_cases kc
+            JOIN users u ON u.id = kc.user_id
+            WHERE kc.id = ?
+            """,
+            (case_id,),
+        ).fetchone()
+    if not case_row:
+        return None
+    docs = get_kyc_case_documents(db_path, case_id)
+    review = _latest_underwriting_review(db_path, case_id)
+    timeline = get_case_timeline(db_path, case_id)
+    artifacts = []
+    with get_conn(db_path) as conn:
+        artifacts = conn.execute(
+            "SELECT * FROM mock_document_artifacts WHERE case_id = ? ORDER BY id DESC",
+            (case_id,),
+        ).fetchall()
+    result = dict(case_row)
+    result["documents"] = docs
+    result["review"] = review
+    result["timeline"] = timeline
+    result["artifacts"] = artifacts
+    return result
+
+
+def list_kyc_cases_for_user(db_path: str, user_id: int, limit: int = 12) -> List[Dict[str, Any]]:
+    with get_conn(db_path) as conn:
+        return conn.execute(
+            """
+            SELECT *
+            FROM kyc_cases
+            WHERE user_id = ?
+            ORDER BY updated_at DESC, id DESC
+            LIMIT ?
+            """,
+            (user_id, limit),
+        ).fetchall()
+
+
+def kyc_dashboard_overview(db_path: str) -> Dict[str, Any]:
+    with get_conn(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT kc.*, u.username
+            FROM kyc_cases kc
+            JOIN users u ON u.id = kc.user_id
+            ORDER BY kc.updated_at DESC, kc.id DESC
+            LIMIT 300
+            """
+        ).fetchall()
+    total = len(rows)
+    approved = len([r for r in rows if r["approval_status"] == "approved"])
+    rejected = len([r for r in rows if r["approval_status"] == "rejected"])
+    manual = len([r for r in rows if r["approval_status"] == "manual_review" or r["kyc_status"] == "manual_review"])
+    avg_ocr = round(sum(float(r.get("verification_score") or 0) for r in rows) / max(1, total), 2)
+    risk_map = {"Low": 80, "Medium": 55, "High": 25}
+    avg_risk = round(sum(risk_map.get(str(r.get("risk_level", "Medium")), 50) for r in rows) / max(1, total), 2)
+    avg_cibil = round(
+        sum({"excellent": 790, "good": 735, "fair": 675, "low": 610, "unavailable": 0}.get(str(r.get("cibil_band", "unavailable")), 0) for r in rows)
+        / max(1, len([r for r in rows if str(r.get("cibil_band", "unavailable")) != "unavailable"])),
+        2,
+    ) if rows else 0.0
+    fraud_queue = [r for r in rows if r["quality_label"] != "good" or r["risk_level"] == "High"][:20]
+    for row in rows:
+        row["fraud_probability_pct"] = max(
+            4,
+            min(
+                96,
+                int(
+                    (35 if row["quality_label"] != "good" else 8)
+                    + (28 if row["risk_level"] == "High" else 14 if row["risk_level"] == "Medium" else 6)
+                    + max(0, int(70 - float(row.get("verification_score") or 0)) // 2)
+                ),
+            ),
+        )
+    return {
+        "rows": rows,
+        "cards": {
+            "total_applications": total,
+            "approved": approved,
+            "rejected": rejected,
+            "manual_review": manual,
+            "average_ocr_score": avg_ocr,
+            "average_risk_score": avg_risk,
+            "average_cibil_score": avg_cibil,
+        },
+        "manual_queue": [r for r in rows if r["approval_status"] == "manual_review"][:20],
+        "fraud_queue": fraud_queue,
+        "mismatch_chart": [
+            {"label": "Quality Failures", "value": len([r for r in rows if r["quality_label"] != "good"])},
+            {"label": "OCR Manual Review", "value": len([r for r in rows if r["ocr_status"] == "manual_review"])},
+            {"label": "KYC Pending", "value": len([r for r in rows if r["kyc_status"] == "pending"])},
+            {"label": "Approved", "value": approved},
+        ],
+    }
+
+
+def underwriting_dashboard_overview(db_path: str) -> Dict[str, Any]:
+    with get_conn(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT ur.*, kc.full_name, kc.company_name, kc.status_flow, u.username
+            FROM underwriting_reviews ur
+            JOIN kyc_cases kc ON kc.id = ur.case_id
+            JOIN users u ON u.id = kc.user_id
+            ORDER BY ur.id DESC
+            LIMIT 300
+            """
+        ).fetchall()
+    total = len(rows)
+    avg_ocr = round(sum(float(r.get("ocr_score") or 0) for r in rows) / max(1, total), 2)
+    risk_score_map = {"Low": 82, "Medium": 58, "High": 26}
+    avg_risk = round(sum(risk_score_map.get(str(r.get("risk_level", "Medium")), 50) for r in rows) / max(1, total), 2)
+    avg_confidence = round(sum(float(r.get("recommendation_confidence") or 0) for r in rows) / max(1, total), 2)
+    with get_conn(db_path) as conn:
+        cibil_rows = conn.execute(
+            """
+            SELECT cibil_band, COUNT(*) AS total
+            FROM kyc_cases
+            GROUP BY cibil_band
+            ORDER BY total DESC
+            """
+        ).fetchall()
+    monthly = {}
+    for row in rows:
+        key = str(row.get("created_at", ""))[:7] or "unknown"
+        entry = monthly.setdefault(key, {"label": key, "approved": 0, "rejected": 0, "manual_review": 0})
+        entry[str(row["approval_status"])] = entry.get(str(row["approval_status"]), 0) + 1
+    heatmap = []
+    for row in rows[:24]:
+        heatmap.append(
+            {
+                "label": f"Case #{row['case_id']}",
+                "risk": row["risk_level"],
+                "approval_probability": int(_approval_probability_from_review(row) * 100),
+                "recommendation_confidence": int(float(row.get("recommendation_confidence") or 0) * 100),
+                "fraud_probability": max(4, min(95, 100 - int(_approval_probability_from_review(row) * 100) + (18 if row["risk_level"] == "High" else 6))),
+            }
+        )
+        row["approval_probability_pct"] = int(_approval_probability_from_review(row) * 100)
+    return {
+        "rows": rows,
+        "cards": {
+            "total_applications": total,
+            "approved": len([r for r in rows if r["approval_status"] == "approved"]),
+            "rejected": len([r for r in rows if r["approval_status"] == "rejected"]),
+            "average_ocr_score": avg_ocr,
+            "average_risk_score": avg_risk,
+            "average_recommendation_confidence": round(avg_confidence * 100, 2),
+        },
+        "monthly_trend": list(monthly.values())[-6:],
+        "heatmap": heatmap,
+        "avg_cibil_graph": [{"label": row["cibil_band"], "value": row["total"]} for row in cibil_rows],
+        "rejection_analytics": [
+            {"label": "High Risk", "value": len([r for r in rows if r["risk_level"] == "High"])},
+            {"label": "Manual Review", "value": len([r for r in rows if r["approval_status"] == "manual_review"])},
+            {"label": "Rejected", "value": len([r for r in rows if r["approval_status"] == "rejected"])},
+        ],
+    }
+
+
+def generate_plan_comparisons(case_row: Dict[str, Any], review: Dict[str, Any] | None) -> List[Dict[str, Any]]:
+    salary = float(case_row.get("monthly_salary") or 0)
+    emi_obligation = float(case_row.get("existing_emi") or 0)
+    requested = float(case_row.get("requested_loan") or 0)
+    eligible = float((review or {}).get("eligible_amount") or case_row.get("eligible_amount") or requested)
+    base = max(0.0, min(eligible if eligible > 0 else requested, max(requested, eligible)))
+    rate_options = [0.109, 0.121, 0.136]
+    tenure_options = [36, 48, 60]
+    cards = []
+    for idx, tenure in enumerate(tenure_options):
+        amount = round(max(50000.0, min(base * (0.9 + idx * 0.06), max(base, 50000.0))), 2)
+        rate = rate_options[idx]
+        emi = repayment_projection(amount, rate, tenure)["baseline_emi"]
+        affordability = max(1, min(99, int((1.0 - _safe_ratio(emi_obligation + emi, max(1.0, salary))) * 100)))
+        approval_prob = max(5, min(97, int((_approval_probability_from_review(review or {"approval_status": "manual_review", "risk_level": "Medium"}) * 100) + (affordability - 50) * 0.2)))
+        cards.append(
+            {
+                "name": ["Shield Smart", "Shield Balance", "Shield Stretch"][idx],
+                "loan_amount": amount,
+                "tenure_months": tenure,
+                "interest_rate": round(rate * 100, 2),
+                "emi": round(emi, 2),
+                "eligibility_pct": affordability,
+                "approval_probability_pct": approval_prob,
+                "best_match": idx == 1,
+            }
+        )
+    return cards
+
+
+def case_chat_context(db_path: str, user_id: int | None) -> Dict[str, Any]:
+    if not user_id:
+        return {}
+    cases = list_kyc_cases_for_user(db_path, user_id, 1)
+    if not cases:
+        return {}
+    case_row = cases[0]
+    review = _latest_underwriting_review(db_path, case_row["id"])
+    docs = get_kyc_case_documents(db_path, case_row["id"])
+    missing_docs = []
+    uploaded = {d["doc_type"] for d in docs}
+    for key, label in DOC_TYPE_ALIASES.items():
+        if label not in uploaded and key not in uploaded:
+            missing_docs.append(label)
+    return {"case": case_row, "review": review, "documents": docs, "missing_docs": missing_docs}
+
+
+def generate_mock_documents_for_case(db_path: str, case_id: int) -> List[Dict[str, Any]]:
+    detail = get_case_detail(db_path, case_id)
+    if not detail:
+        return []
+    salary = float(detail.get("monthly_salary") or 0)
+    company = detail.get("company_name") or "LoanShield Demo Corp"
+    name = detail.get("full_name") or "Demo Applicant"
+    net_salary = round(salary * 0.89, 2)
+    join_year = max(2018, dt.datetime.utcnow().year - int(max(1, float(detail.get("years_of_experience") or 1))))
+    lines_by_doc = {
+        "salary_slip_pdf": [
+            "LoanShield Salary Slip",
+            f"Employee: {name}",
+            f"Company: {company}",
+            f"Gross Salary: {salary:.2f}",
+            f"Net Salary: {net_salary:.2f}",
+            f"Pay Period: {dt.datetime.utcnow().strftime('%b %Y')}",
+            f"PAN: {detail.get('pan_number') or 'ABCDE1234F'}",
+        ],
+        "joining_letter_pdf": [
+            "LoanShield Joining Letter",
+            f"Employee: {name}",
+            f"Company: {company}",
+            f"Designation: {detail.get('designation') or 'Associate Analyst'}",
+            f"Joining Date: 01-04-{join_year}",
+            f"Annualized Salary: {salary * 12:.2f}",
+        ],
+        "bank_statement_pdf": [
+            "LoanShield Bank Statement",
+            f"Account Holder: {name}",
+            "Recurring salary credits",
+            f"Salary Credit: {net_salary:.2f}",
+            f"Salary Credit: {net_salary:.2f}",
+            f"Salary Credit: {net_salary:.2f}",
+            f"Company: {company}",
+        ],
+    }
+    created = []
+    storage_dir = _doc_storage_dir(db_path)
+    with get_conn(db_path) as conn:
+        for doc_type, lines in lines_by_doc.items():
+            path = os.path.join(storage_dir, f"case-{case_id}-{doc_type}.pdf")
+            _write_demo_pdf(path, lines)
+            checksum = hashlib.sha256(open(path, "rb").read()).hexdigest()
+            conn.execute(
+                """
+                INSERT INTO mock_document_artifacts (case_id, doc_type, file_path, checksum, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (case_id, doc_type, path, checksum, utcnow()),
+            )
+            created.append({"doc_type": doc_type, "file_path": path, "checksum": checksum})
+        conn.commit()
+    log_case_audit(
+        db_path,
+        case_id=case_id,
+        application_id=detail.get("application_id"),
+        action="MOCK_DOCS_GENERATED",
+        actor="system",
+        remarks="Generated demo salary slip, joining letter, and bank statement PDFs.",
+        status_flow=detail.get("status_flow", "submitted"),
+    )
+    return created
+
+
+def bootstrap_mock_kyc_cases(db_path: str):
+    with get_conn(db_path) as conn:
+        existing = conn.execute("SELECT COUNT(*) AS cnt FROM kyc_cases").fetchone()
+        if existing and int(existing["cnt"]) >= 20:
+            return
+        now = utcnow()
+        status_plan = ["approved"] * 10 + ["manual_review"] * 5 + ["rejected"] * 5
+        for idx in range(20):
+            username = f"mockuser{idx + 1}"
+            full_name = f"Mock User {idx + 1}"
+            email = f"{username}@demo.local"
+            phone = f"+9100000{idx + 10000}"
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO users (
+                    username, full_name, password_hash, role, access_level, region, email, phone, created_at
+                ) VALUES (?, ?, 'demo-hash', 'user', 'end_user', ?, ?, ?, ?)
+                """,
+                (username, full_name, REGIONS[idx % len(REGIONS)], email, phone, now),
+            )
+        conn.commit()
+        users = conn.execute(
+            """
+            SELECT id, full_name, email, phone, username
+            FROM users
+            WHERE username LIKE 'mockuser%'
+            ORDER BY username
+            LIMIT 20
+            """
+        ).fetchall()
+        for idx, user in enumerate(users):
+            current = conn.execute("SELECT id FROM kyc_cases WHERE user_id = ?", (user["id"],)).fetchone()
+            if current:
+                continue
+            status = status_plan[idx]
+            salary = 55000 + idx * 3200
+            requested = round(salary * 9.5, 2)
+            ocr_score = 86 if status == "approved" else 68 if status == "manual_review" else 42
+            risk = "Low" if status == "approved" else "Medium" if status == "manual_review" else "High"
+            quality = "good" if status == "approved" else "blurred" if status == "manual_review" else "noisy"
+            conn.execute(
+                """
+                INSERT INTO kyc_cases (
+                    user_id, onboarding_step, full_name, email, phone, pan_number, aadhaar_last4,
+                    company_name, designation, years_of_experience, monthly_salary, requested_loan,
+                    existing_emi, kyc_status, ocr_status, verification_score, risk_level, approval_status,
+                    eligible_amount, suggested_safer_amount, recommended_tenure_months, quality_label,
+                    cibil_band, cibil_explanation, status_flow, metadata, created_at, updated_at
+                ) VALUES (?, 6, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 48, ?, ?, ?, ?, '{}', ?, ?)
+                """,
+                (
+                    user["id"],
+                    user["full_name"],
+                    user["email"] or f"{user['username']}@demo.local",
+                    user["phone"] or f"+9100000{idx + 10000}",
+                    f"ABCDE{idx:04d}F",
+                    f"{1000 + idx}"[-4:],
+                    f"Demo Employer {idx % 6 + 1}",
+                    ["Analyst", "Manager", "Lead", "Associate"][idx % 4],
+                    round(1.5 + idx * 0.3, 1),
+                    salary,
+                    requested,
+                    round(salary * 0.12, 2),
+                    "verified" if status == "approved" else status,
+                    "verified" if status == "approved" else status,
+                    ocr_score,
+                    risk,
+                    status,
+                    round(requested * (0.95 if status == "approved" else 0.76 if status == "manual_review" else 0.52), 2),
+                    round(requested * (0.88 if status == "approved" else 0.66 if status == "manual_review" else 0.4), 2),
+                    quality,
+                    "good" if status == "approved" else "fair" if status == "manual_review" else "low",
+                    f"Derived explanation for demo case {idx + 1} using the existing score output band only.",
+                    "approved" if status == "approved" else "manual_review" if status == "manual_review" else "rejected",
+                    now,
+                    now,
+                ),
+            )
+        conn.commit()
+
+
+def admin_case_decision(db_path: str, case_id: int, decision: str, actor: str, remarks: str) -> Dict[str, Any]:
+    decision = decision.lower()
+    if decision not in {"approved", "manual_review", "rejected", "verified"}:
+        raise ValueError("Unsupported decision")
+    status_flow = {
+        "approved": "approved",
+        "manual_review": "manual_review",
+        "rejected": "rejected",
+        "verified": "ocr_verified",
+    }[decision]
+    with get_conn(db_path) as conn:
+        conn.execute(
+            """
+            UPDATE kyc_cases
+            SET kyc_status = ?,
+                approval_status = CASE WHEN ? IN ('approved','rejected','manual_review') THEN ? ELSE approval_status END,
+                status_flow = ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (decision, decision, decision, status_flow, utcnow(), case_id),
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM kyc_cases WHERE id = ?", (case_id,)).fetchone()
+    log_case_audit(
+        db_path,
+        case_id=case_id,
+        application_id=row.get("application_id") if row else None,
+        action="ADMIN_DECISION",
+        actor=actor,
+        remarks=remarks or f"Case marked {decision}",
+        status_flow=status_flow,
+    )
+    return row
 
 
 def append_chain(db_path: str, application_id: int | None, actor_id: int | None, event_type: str, payload: str) -> str:
@@ -1096,7 +2274,7 @@ def bootstrap_suite_defaults(db_path: str):
             )
         templates = [
             ("DUE_REMINDER", "email", "Payment reminder for {{application_id}}", "Please clear pending dues before due date."),
-            ("COLLECTION_NOTICE", "sms", "Collections notice", "Your account has moved to collections workflow."),
+            ("COLLECTION_NOTICE", "email", "Collections notice", "Your account has moved to collections workflow."),
         ]
         for key, channel, subject, body in templates:
             conn.execute(
@@ -1133,6 +2311,7 @@ def bootstrap_suite_defaults(db_path: str):
                 (doc_key, title, content, utcnow()),
             )
         conn.commit()
+    bootstrap_mock_kyc_cases(db_path)
 
 
 def create_quote_for_application(db_path: str, application: Dict[str, Any]) -> Dict[str, Any]:

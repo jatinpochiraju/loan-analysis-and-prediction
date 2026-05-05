@@ -17,6 +17,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 MODEL_FILENAME = "approval_model.pkl"
+AUTO_APPROVAL_MAX_AMOUNT = 150000.0
 
 FEATURES = [
     "region",
@@ -215,6 +216,7 @@ def infer(bundle: ModelBundle, payload: Dict, policy: Dict | None = None) -> Dic
     else:
         factor = (1 + monthly_rate) ** term
         rec_amount = safe_emi * (factor - 1) / (monthly_rate * factor)
+    rec_amount = max(0.0, rec_amount)
 
     factors = {
         "dti": round(dti, 3),
@@ -257,6 +259,7 @@ def infer(bundle: ModelBundle, payload: Dict, policy: Dict | None = None) -> Dic
         borrower_segment = "D"
 
     requested = payload["requested_amount"]
+    approval_route = "auto"
     if policy:
         verification_level = policy["verification_level"]
         required_documents = list(policy["required_documents"])
@@ -297,19 +300,50 @@ def infer(bundle: ModelBundle, payload: Dict, policy: Dict | None = None) -> Dic
 
     # Policy enforcement by requested amount:
     # high-ticket loans must satisfy stricter collateral and verification conditions.
+    if requested > AUTO_APPROVAL_MAX_AMOUNT and status == "Approved":
+        status = "Manual Review"
+        tier = "Standard"
+        approval_route = "admin_review"
     if requested > 300000 and collateral_shortfall > 0:
         status = "Rejected"
         tier = "High Risk"
+        approval_route = "admin_review"
     elif requested > 150000 and collateral_shortfall > 0 and status == "Approved":
         status = "Manual Review"
         tier = "Standard"
+        approval_route = "admin_review"
     if policy:
         if payload["credit_score"] < int(policy["min_credit_score"]) and status == "Approved":
             status = "Manual Review"
             tier = "Standard"
+            approval_route = "admin_review"
         if dti > float(policy["max_dti"]):
             status = "Rejected"
             tier = "High Risk"
+            approval_route = "admin_review"
+
+    if status != "Approved":
+        approval_route = "admin_review"
+
+    lower_apply_amount = min(rec_amount, requested * 0.9) if requested > 0 else rec_amount
+    lower_apply_amount = max(0.0, lower_apply_amount)
+    if status == "Rejected" and requested > 0 and lower_apply_amount >= requested:
+        lower_apply_amount = max(0.0, requested * 0.8)
+    if status == "Rejected" and requested > 0 and lower_apply_amount <= 0:
+        fallback_amount = max(1000.0, requested * 0.5)
+        lower_apply_amount = min(fallback_amount, max(1000.0, requested * 0.9))
+    recommendation_note = ""
+    if status == "Rejected":
+        if lower_apply_amount > 0:
+            recommendation_note = (
+                f"This application was rejected at the requested amount. "
+                f"You can reapply with about {lower_apply_amount:.2f} for a safer approval range."
+            )
+        else:
+            recommendation_note = (
+                "This application was rejected. Current income and repayment profile do not support "
+                "a lower safe amount right now."
+            )
 
     return {
         "status": status,
@@ -318,7 +352,7 @@ def infer(bundle: ModelBundle, payload: Dict, policy: Dict | None = None) -> Dic
         "risk_score": risk_score,
         "interest_rate": base_rate,
         "monthly_payment_est": emi,
-        "recommended_amount": max(0.0, rec_amount),
+        "recommended_amount": lower_apply_amount if status == "Rejected" else rec_amount,
         "decision_factors": json.dumps(
             {
                 **factors,
@@ -328,6 +362,10 @@ def infer(bundle: ModelBundle, payload: Dict, policy: Dict | None = None) -> Dic
                 "required_collateral_value": round(required_collateral_value, 2),
                 "collateral_required": collateral_required,
                 "collateral_shortfall": round(collateral_shortfall, 2),
+                "auto_approval_max_amount": round(AUTO_APPROVAL_MAX_AMOUNT, 2),
+                "approval_route": approval_route,
+                "credit_score_source": payload.get("credit_score_source", "provided"),
+                "credit_score_inputs": payload.get("credit_score_inputs", {}),
                 "product_code": policy["product_code"] if policy else payload.get("product_code", ""),
                 "product_name": policy["product_name"] if policy else "",
                 "borrower_segment": borrower_segment,
@@ -335,6 +373,8 @@ def infer(bundle: ModelBundle, payload: Dict, policy: Dict | None = None) -> Dic
                 "loan_type": payload.get("loan_type", "PERSONAL"),
                 "preferred_currencies": payload.get("preferred_currencies", ["USD"]),
                 "loan_profile": payload.get("loan_profile", {}),
+                "lower_apply_amount": round(lower_apply_amount, 2),
+                "recommendation_note": recommendation_note,
             },
             separators=(",", ":"),
         ),

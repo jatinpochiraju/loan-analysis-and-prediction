@@ -132,11 +132,11 @@
                 </article>
                 <article>
                     <span>Monthly EMI Estimate</span>
-                    <strong>${{ '%.2f'|format(result.monthly_payment_est) }}</strong>
+                    <strong>INR {{ '%.2f'|format(result.monthly_payment_est) }}</strong>
                 </article>
                 <article>
                     <span>Recommended Max Loan</span>
-                    <strong>${{ '%.2f'|format(result.recommended_max_amount) }}</strong>
+                    <strong>INR {{ '%.2f'|format(result.recommended_max_amount) }}</strong>
                 </article>
                 <article>
                     <span>Debt-to-Income</span>
@@ -192,7 +192,7 @@
                             <td>{{ item.id }}</td>
                             <td>{{ item.applicant_name }}</td>
                             <td>{{ item.pan_last4 }}</td>
-                            <td>${{ '%.2f'|format(item.requested_amount) }}</td>
+                            <td>INR {{ '%.2f'|format(item.requested_amount) }}</td>
                             <td>{{ item.decision_status }}</td>
                             <td>{{ item.risk_score }}</td>
                             <td>{{ '%.1f'|format(item.approval_probability * 100) }}%</td>

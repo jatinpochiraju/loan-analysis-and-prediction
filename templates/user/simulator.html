@@ -33,7 +33,7 @@
         <article><span>Risk Score</span><strong>{{ result.risk_score }}</strong></article>
         <article><span>Approval Prob.</span><strong>{{ '%.1f'|format(result.approval_probability * 100) }}%</strong></article>
         <article><span>Interest Rate</span><strong>{{ '%.2f'|format(result.interest_rate * 100) }}%</strong></article>
-        <article><span>EMI</span><strong>${{ '%.2f'|format(result.monthly_payment_est) }}</strong></article>
+        <article><span>EMI</span><strong>INR {{ '%.2f'|format(result.monthly_payment_est) }}</strong></article>
       </div>
     {% else %}
       <p>Run a simulation to compare outcomes before submitting a formal application.</p>
@@ -41,12 +41,12 @@
     {% if repayment %}
       <h2 class="mtop">Repayment Scenarios</h2>
       <div class="metric-cards command-cards">
-        <article><span>Baseline EMI</span><strong>${{ '%.2f'|format(repayment.baseline_emi) }}</strong></article>
-        <article><span>Baseline Interest (Est.)</span><strong>${{ '%.2f'|format(repayment.baseline_interest_est) }}</strong></article>
+        <article><span>Baseline EMI</span><strong>INR {{ '%.2f'|format(repayment.baseline_emi) }}</strong></article>
+        <article><span>Baseline Interest (Est.)</span><strong>INR {{ '%.2f'|format(repayment.baseline_interest_est) }}</strong></article>
         <article><span>Months Saved</span><strong>{{ repayment.months_saved }}</strong></article>
-        <article><span>Interest Saved (Est.)</span><strong>${{ '%.2f'|format(repayment.interest_saved_est) }}</strong></article>
-        <article><span>Refinance EMI</span><strong>${{ '%.2f'|format(repayment.refinance_emi) }}</strong></article>
-        <article><span>Refinance Monthly Saving</span><strong>${{ '%.2f'|format(repayment.refinance_saving_monthly) }}</strong></article>
+        <article><span>Interest Saved (Est.)</span><strong>INR {{ '%.2f'|format(repayment.interest_saved_est) }}</strong></article>
+        <article><span>Refinance EMI</span><strong>INR {{ '%.2f'|format(repayment.refinance_emi) }}</strong></article>
+        <article><span>Refinance Monthly Saving</span><strong>INR {{ '%.2f'|format(repayment.refinance_saving_monthly) }}</strong></article>
       </div>
     {% endif %}
   </section>

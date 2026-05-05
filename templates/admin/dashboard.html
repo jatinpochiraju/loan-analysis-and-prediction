@@ -10,6 +10,8 @@
     </div>
     <div class="hero-actions">
       <a class="btn ghost" href="{{ url_for('admin_modules') }}">All Modules</a>
+      <a class="btn ghost" href="{{ url_for('admin_kyc_dashboard') }}">KYC Dashboard</a>
+      <a class="btn ghost" href="{{ url_for('admin_underwriting_dashboard') }}">Underwriting Dashboard</a>
       <button type="button" class="btn" data-modal-open="entityModal">New Entity</button>
       <button type="button" class="btn ghost" data-modal-open="typelistModal">New Typelist</button>
       <button type="button" class="btn ghost" data-modal-open="extensionModal">Entity Extension</button>
@@ -38,8 +40,8 @@
       <article><span>Approved</span><strong>{{ insights.overview.approved or 0 }}</strong></article>
       <article><span>Manual Review Queue</span><strong>{{ insights.overview.manual or 0 }}</strong></article>
       <article><span>Rejected</span><strong>{{ insights.overview.rejected or 0 }}</strong></article>
-      <article><span>Avg Salary</span><strong>${{ '%.0f'|format(insights.overview.avg_salary or 0) }}</strong></article>
-      <article><span>Avg Expenditure</span><strong>${{ '%.0f'|format(insights.overview.avg_exp or 0) }}</strong></article>
+      <article><span>Avg Salary</span><strong>{{ '%.0f'|format(insights.overview.avg_salary or 0) }}</strong></article>
+      <article><span>Avg Expenditure</span><strong>{{ '%.0f'|format(insights.overview.avg_exp or 0) }}</strong></article>
       <article><span>Approval Probability</span><strong>{{ '%.1f'|format((insights.overview.avg_prob or 0) * 100) }}%</strong></article>
       <article><span>High Risk Cases</span><strong>{{ high_risk|length }}</strong></article>
     </div>
@@ -51,9 +53,9 @@
       <a class="btn ghost" href="{{ url_for('admin_servicing_ledger') }}">Open Servicing Ledger</a>
     </div>
     <div class="metric-cards command-cards">
-      <article><span>Total Disbursed</span><strong>${{ '%.2f'|format(servicing.totals.disbursed or 0) }}</strong></article>
-      <article><span>Open EMI</span><strong>${{ '%.2f'|format(servicing.totals.open_emi or 0) }}</strong></article>
-      <article><span>Late Fees</span><strong>${{ '%.2f'|format(servicing.totals.total_fees or 0) }}</strong></article>
+      <article><span>Total Disbursed</span><strong>{{ '%.2f'|format(servicing.totals.disbursed or 0) }}</strong></article>
+      <article><span>Open EMI</span><strong>{{ '%.2f'|format(servicing.totals.open_emi or 0) }}</strong></article>
+      <article><span>Late Fees</span><strong>{{ '%.2f'|format(servicing.totals.total_fees or 0) }}</strong></article>
       <article><span>Overdue Entries</span><strong>{{ servicing.totals.overdue_entries or 0 }}</strong></article>
     </div>
   </section>
@@ -72,7 +74,7 @@
               <td>{{ app.id }}</td>
               <td>{{ app.username }}</td>
               <td>{{ app.region }}</td>
-              <td>${{ '%.0f'|format(app.requested_amount) }}</td>
+              <td>{{ '%.0f'|format(app.requested_amount) }}</td>
               <td>{{ app.borrower_segment }}</td>
               <td>{{ app.risk_score }}</td>
               <td>
@@ -104,7 +106,7 @@
         <article>
           <div>
             <strong>#{{ app.id }} {{ app.username }}</strong>
-            <span>{{ app.region }} | ${{ '%.0f'|format(app.requested_amount) }}</span>
+            <span>{{ app.region }} | {{ '%.0f'|format(app.requested_amount) }}</span>
           </div>
           <em>Risk {{ app.risk_score }}</em>
         </article>
@@ -207,8 +209,8 @@
               <td>{{ region.region }}</td>
               <td>{{ region.total }}</td>
               <td>{{ '%.1f'|format((region.approval_rate or 0) * 100) }}%</td>
-              <td>${{ '%.0f'|format(region.avg_salary or 0) }}</td>
-              <td>${{ '%.0f'|format(region.avg_exp or 0) }}</td>
+              <td>{{ '%.0f'|format(region.avg_salary or 0) }}</td>
+              <td>{{ '%.0f'|format(region.avg_exp or 0) }}</td>
             </tr>
           {% endfor %}
         </tbody>
@@ -231,9 +233,9 @@
               <td>{{ app.id }}</td>
               <td>{{ app.username }}</td>
               <td>{{ app.region }}</td>
-              <td>${{ '%.0f'|format(app.current_salary) }}</td>
-              <td>${{ '%.0f'|format(app.monthly_expenditure) }}</td>
-              <td>${{ '%.0f'|format(app.requested_amount) }}</td>
+              <td>{{ '%.0f'|format(app.current_salary) }}</td>
+              <td>{{ '%.0f'|format(app.monthly_expenditure) }}</td>
+              <td>{{ '%.0f'|format(app.requested_amount) }}</td>
               <td>{{ app.status }}</td>
               <td>{{ app.tier }}</td>
               <td>{{ app.borrower_segment }}</td>

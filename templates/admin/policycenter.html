@@ -33,7 +33,7 @@
         <tbody>
           {% for p in products %}
             <tr>
-              <td>{{ p.code }}</td><td>{{ p.name }}</td><td>{{ p.policy_type or 'STANDARD' }}</td><td>${{ '%.0f'|format(p.min_amount) }} - ${{ '%.0f'|format(p.max_amount) }}</td>
+              <td>{{ p.code }}</td><td>{{ p.name }}</td><td>{{ p.policy_type or 'STANDARD' }}</td><td>{{ '%.0f'|format(p.min_amount) }} - {{ '%.0f'|format(p.max_amount) }}</td>
               <td>{{ '%.3f'|format(p.base_rate) }}</td><td>{{ p.verification_level }}</td><td>{{ '%.2f'|format(p.required_collateral_ratio or 0) }}</td><td>{{ p.min_credit_score }}</td><td>{{ p.max_dti }}</td>
             </tr>
           {% else %}

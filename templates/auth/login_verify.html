@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+{% block title %}Verify Login | LoanShield{% endblock %}
+{% block body %}
+<main class="page auth-wrap">
+  <section class="panel auth-panel">
+    <h1>Verify Login</h1>
+    <p>Enter the OTP sent to {{ email_masked }}.</p>
+    <p class="small-muted">OTP expires at {{ expires_at }} UTC. Attempts left: {{ max_attempts - attempts }}</p>
+    <form method="post" class="form-rows">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="username" value="{{ username }}">
+      <label><span>Email OTP</span><input name="email_code" required maxlength="6" pattern="[0-9]{6}" placeholder="6-digit code"></label>
+      <button class="btn" type="submit">Verify and Sign In</button>
+    </form>
+    <form method="post" action="{{ url_for('user_login_verify_resend') }}" class="form-rows" style="margin-top:0.6rem;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn ghost" type="submit">Resend Login OTP</button>
+    </form>
+  </section>
+</main>
+{% endblock %}

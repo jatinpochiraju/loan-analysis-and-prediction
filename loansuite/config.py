@@ -1,9 +1,21 @@
 import os
 
 
+def _default_db_path() -> str:
+    configured = os.getenv("LOAN_DB_PATH")
+    if configured:
+        return configured
+
+    cwd = os.getcwd()
+    legacy_path = os.path.join(cwd, "loan_suite.db")
+    if os.path.exists(legacy_path):
+        return legacy_path
+    return os.path.join(cwd, "loanshield.db")
+
+
 class Config:
     SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "dev-secret-key-change")
-    DB_PATH = os.getenv("LOAN_DB_PATH", os.path.join(os.getcwd(), "loan_suite.db"))
+    DB_PATH = _default_db_path()
     CLOUD_DB_URL = os.getenv("CLOUD_DB_URL", "").strip()
     CLOUD_DB_SSLMODE = os.getenv("CLOUD_DB_SSLMODE", "require").strip()
     MODEL_DIR = os.getenv("LOAN_MODEL_DIR", os.path.join(os.getcwd(), "model_store"))

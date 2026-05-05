@@ -1,3 +1,3 @@
-# Backend package for LoanSuite 360
+# Backend package for LoanShield
 # Initializes database and API components
 

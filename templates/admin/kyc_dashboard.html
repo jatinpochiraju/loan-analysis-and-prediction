@@ -1,0 +1,134 @@
+{% extends 'base.html' %}
+{% block title %}KYC Dashboard | LoanShield{% endblock %}
+{% block body %}
+<main class="page dash-grid">
+  <section class="panel wide">
+    <div class="row-between">
+      <div>
+        <h1>KYC Dashboard</h1>
+        <p>Applicant queue, KYC/OCR status, uploaded docs, risk review, fraud queue, and audit-oriented actions.</p>
+      </div>
+      <a class="btn ghost" href="{{ url_for('admin_dashboard') }}">Back to AdminCenter</a>
+    </div>
+    <div class="metric-cards command-cards">
+      <article><span>Total Applications</span><strong>{{ data.cards.total_applications }}</strong></article>
+      <article><span>Approved</span><strong>{{ data.cards.approved }}</strong></article>
+      <article><span>Rejected</span><strong>{{ data.cards.rejected }}</strong></article>
+      <article><span>Manual Review</span><strong>{{ data.cards.manual_review }}</strong></article>
+      <article><span>Average OCR Score</span><strong>{{ data.cards.average_ocr_score }}</strong></article>
+      <article><span>Average Risk Score</span><strong>{{ data.cards.average_risk_score }}</strong></article>
+      <article><span>Average CIBIL View</span><strong>{{ data.cards.average_cibil_score }}</strong></article>
+    </div>
+  </section>
+
+  <section class="panel form-panel">
+    <h2>Manual Review Queue</h2>
+    <div class="table-wrap table-readable compact-table">
+      <table>
+        <thead><tr><th>Case</th><th>User</th><th>KYC</th><th>OCR</th><th>Quality</th><th>Risk</th><th>Docs</th><th>Action</th><th>Demo Docs</th></tr></thead>
+        <tbody>
+          {% for row in data.manual_queue %}
+            <tr>
+              <td>{{ row.id }}</td>
+              <td>{{ row.username }}</td>
+              <td>{{ row.kyc_status }}</td>
+              <td>{{ row.verification_score }}</td>
+              <td>{{ row.quality_label }}</td>
+              <td>{{ row.risk_level }}</td>
+              <td>{{ row.onboarding_step }}/6</td>
+              <td>
+                <form method="post" action="{{ url_for('admin_kyc_case_decision', case_id=row.id) }}" class="inline-form">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <select name="decision">
+                    <option value="approved">approve</option>
+                    <option value="manual_review" selected>manual_review</option>
+                    <option value="rejected">reject</option>
+                  </select>
+                  <input name="remarks" value="Admin review" maxlength="180" class="small-input">
+                  <button class="btn tiny" type="submit">Apply</button>
+                </form>
+              </td>
+              <td>
+                <form method="post" action="{{ url_for('admin_kyc_case_demo_docs', case_id=row.id) }}" class="inline-form">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <select name="demo_action">
+                    <option value="generate">generate</option>
+                    <option value="attach">attach</option>
+                  </select>
+                  <button class="btn tiny ghost" type="submit">Run</button>
+                </form>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="9">No manual review items.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel stats-panel">
+    <h2>Fraud Queue</h2>
+    <div class="risk-list">
+      {% for row in data.fraud_queue %}
+        <article>
+          <div>
+            <strong>Case #{{ row.id }} {{ row.username }}</strong>
+            <span>{{ row.company_name }} | {{ row.status_flow }}</span>
+          </div>
+          <em>{{ row.quality_label }} / {{ row.risk_level }} / {{ row.fraud_probability_pct }}%</em>
+        </article>
+      {% else %}
+        <article><div><strong>No fraud queue items</strong><span>Quality and risk signals are currently stable.</span></div><em>OK</em></article>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="panel wide">
+    <h2>Mismatch Reason Charts</h2>
+    <div class="comparison-grid">
+      {% for item in data.mismatch_chart %}
+        <article class="comparison-card">
+          <strong>{{ item.label }}</strong>
+          <p>{{ item.value }}</p>
+        </article>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="panel wide">
+    <h2>Applicant Queue</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Case</th><th>User</th><th>KYC Status</th><th>OCR Score</th><th>Risk</th><th>Uploaded Docs</th><th>Approval Status</th><th>Quality</th><th>Demo Docs</th></tr></thead>
+        <tbody>
+          {% for row in data.rows %}
+            <tr>
+              <td>{{ row.id }}</td>
+              <td>{{ row.username }}</td>
+              <td>{{ row.kyc_status }}</td>
+              <td>{{ '%.0f'|format(row.verification_score or 0) }}</td>
+              <td>{{ row.risk_level }}</td>
+              <td>{{ row.onboarding_step }}/6</td>
+              <td>{{ row.approval_status }}</td>
+              <td>{{ row.quality_label }}</td>
+              <td>
+                <form method="post" action="{{ url_for('admin_kyc_case_demo_docs', case_id=row.id) }}" class="inline-form">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <select name="demo_action">
+                    <option value="generate">generate</option>
+                    <option value="attach">attach</option>
+                  </select>
+                  <button class="btn tiny ghost" type="submit">Run</button>
+                </form>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="9">No KYC cases found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
+{% endblock %}

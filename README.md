@@ -16,7 +16,7 @@ A comprehensive, secure, Guidewire-inspired loan platform with:
 - KYC document hash anchoring (`kyc_documents` + blockchain audit events)
 - servicing ledger and delinquency workflow (`servicing_ledger`, `delinquency_actions`)
 - login lockout controls via SQL-backed auth security state (`auth_security`)
-- integration-ready outbound notifications (`notification_events`) for SendGrid/Twilio
+- integration-ready outbound notifications (`notification_events`) for SMTP/SendGrid email
 - guarded chatbot (`/chatbot`) with SQL chat logs (`chat_messages`)
 
 ## Key Capabilities
@@ -91,7 +91,6 @@ The platform returns:
 Optional integrations are enabled through environment variables:
 
 - `SENDGRID_API_KEY` for email notifications
-- `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_PHONE` for SMS
 - `STRIPE_API_KEY` for payment intent creation
 - `KYC_API_KEY` for external KYC verification hook
 - `MAPBOX_API_KEY` for address normalization hook
@@ -107,7 +106,6 @@ Current integration pages:
 Integration test env helpers:
 
 - `TEST_EMAIL_RECIPIENT` for live SendGrid smoke test
-- `TEST_SMS_TO` for live Twilio smoke test
 
 ## 8) Chatbot
 
@@ -214,12 +212,12 @@ Integration test env helpers:
 ## Project Structure
 
 - `app.py`: entrypoint
-- `loansuite/config.py`: app configuration
-- `loansuite/db.py`: DB setup and schema management
-- `loansuite/security.py`: auth/security/guardrail helpers
-- `loansuite/ml.py`: model training + inference
-- `loansuite/services.py`: data + chain + insights services
-- `loansuite/routes.py`: all web routes and workflows
+- `loanshield/config.py`: app configuration
+- `loanshield/db.py`: DB setup and schema management
+- `loanshield/security.py`: auth/security/guardrail helpers
+- `loanshield/ml.py`: model training + inference
+- `loanshield/services.py`: data + chain + insights services
+- `loanshield/routes.py`: all web routes and workflows
 - `templates/`: home, auth pages, user and admin dashboards
 - `static/style.css`: modern suite styling
 
@@ -251,5 +249,5 @@ export DATA_KEY="replace-this-too"
 ## Notes
 
 - Existing incompatible old tables are auto-migrated into timestamped `_legacy_...` tables.
-- SQLite database file: `loan_suite.db`
+- SQLite database file: `loanshield.db`
 - ML model artifact directory: `model_store/`

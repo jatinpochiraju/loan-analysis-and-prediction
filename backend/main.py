@@ -8,7 +8,7 @@ import datetime
 # create tables when module is imported; for production use migrations instead
 models.Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="LoanSuite 360 API")
+app = FastAPI(title="LoanShield API")
 
 
 class ApplyRequest(BaseModel):
@@ -27,12 +27,18 @@ class PaymentRequest(BaseModel):
 
 @app.post("/api/apply")
 def apply(req: ApplyRequest, db: Session = Depends(get_db)):
+    def _decrypt_or_plaintext(value):
+        try:
+            return security.decrypt_pii(value)
+        except Exception:
+            return value
+
     try:
-        name = security.decrypt_pii(req.name)
-        pan = security.decrypt_pii(req.pan)
-        salary = float(security.decrypt_pii(req.salary))
-    except Exception:
-        raise HTTPException(status_code=400, detail="invalid encrypted payload")
+        name = _decrypt_or_plaintext(req.name)
+        pan = _decrypt_or_plaintext(req.pan)
+        salary = float(_decrypt_or_plaintext(req.salary))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="invalid payload") from exc
 
     decision = logic.predict_loan_status(salary, req.expense, req.loan_amount)
     user = models.User()
@@ -62,7 +68,7 @@ def apply(req: ApplyRequest, db: Session = Depends(get_db)):
 def payment(req: PaymentRequest, db: Session = Depends(get_db)):
     last = db.query(models.Ledger).order_by(models.Ledger.id.desc()).first()
     prev_hash = last.current_hash if last else None
-    timestamp = datetime.datetime.utcnow().isoformat()
+    timestamp = datetime.datetime.utcnow()
     current_hash = security.generate_block_hash(prev_hash, req.user_id, req.amount, timestamp)
 
     ledger = models.Ledger(

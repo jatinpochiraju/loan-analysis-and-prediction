@@ -18,44 +18,53 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label><span>Loan Type</span>
         <select name="loan_type" id="loanTypeSelect" required>
-          {% for code, label in loan_types %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+          {% for code, label in loan_types %}<option value="{{ code }}" {% if reapply_prefill and reapply_prefill.loan_type == code %}selected{% endif %}>{{ label }}</option>{% endfor %}
         </select>
       </label>
       <label><span>Loan Product</span>
         <select name="product_code" required>
           <option value="">Select product</option>
-          {% for p in products %}<option value="{{ p.code }}">{{ p.code }} - {{ p.name }}</option>{% endfor %}
+          {% for p in products %}<option value="{{ p.code }}" {% if reapply_prefill and reapply_prefill.product_code == p.code %}selected{% endif %}>{{ p.code }} - {{ p.name }}</option>{% endfor %}
         </select>
       </label>
       <label><span>Policy Type</span>
         <select name="policy_type" required>
-          {% for code, label in policy_types %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+          <option value="">Select policy type</option>
+          {% for code, label in policy_types %}<option value="{{ code }}" {% if reapply_prefill and reapply_prefill.policy_type == code %}selected{% endif %}>{{ label }}</option>{% endfor %}
         </select>
       </label>
-      <label class="full-width"><span>Preferred Currencies (multi-select)</span>
-        <select name="preferred_currencies" multiple size="4" class="currency-select">
+      <div class="full-width">
+        <span class="field-label">Preferred Currencies</span>
+        <div class="choice-grid currency-grid">
+          {% set selected_currencies = reapply_prefill.preferred_currencies if reapply_prefill and reapply_prefill.preferred_currencies else ['INR'] %}
           {% for code, label in currency_options %}
-            <option value="{{ code }}" {% if code == 'USD' %}selected{% endif %}>{{ label }}</option>
+            <label class="choice-chip">
+              <input type="checkbox" name="preferred_currencies" value="{{ code }}" {% if code in selected_currencies %}checked{% endif %}>
+              <span>{{ label }}</span>
+            </label>
           {% endfor %}
-        </select>
-      </label>
-      <div class="full-width helper">Hold Ctrl/Cmd to select multiple currencies (USD, INR, AUD, Pound/GBP, Rand/ZAR, Euro/EUR, Yuan/CNY, Baht/THB).</div>
+        </div>
+      </div>
+      <div class="full-width helper">Indian Rupee (INR) is the supported application currency.</div>
       <label><span>Region</span>
         <select name="region" required>
           <option value="">Select</option>
-          {% for region in regions %}<option value="{{ region }}">{{ region }}</option>{% endfor %}
+          {% for region in regions %}<option value="{{ region }}" {% if reapply_prefill and reapply_prefill.region == region %}selected{% endif %}>{{ region }}</option>{% endfor %}
         </select>
       </label>
-      <label><span>KYC ID Number</span><input type="text" name="kyc_id_number" maxlength="40" required></label>
-      <label><span>Income Document Ref</span><input type="text" name="income_doc_ref" maxlength="80" required></label>
-      <label><span>Current Salary (annual)</span><input type="number" name="current_salary" min="12000" required></label>
-      <label><span>Monthly Expenditure</span><input type="number" name="monthly_expenditure" min="0" required></label>
-      <label><span>Existing EMI</span><input type="number" name="existing_emi" min="0" required></label>
-      <label><span>Requested Amount</span><input type="number" name="requested_amount" min="1000" required></label>
-      <label><span>Loan Term (months)</span><input type="number" name="loan_term_months" min="6" max="420" required></label>
-      <label><span>Employment Years</span><input type="number" step="0.1" name="employment_years" min="0" required></label>
-      <label><span>Credit Score</span><input type="number" name="credit_score" min="300" max="900" required></label>
-      <label><span>Collateral Value</span><input type="number" name="collateral_value" min="0" required></label>
+      <label><span>KYC ID Number</span><input type="text" name="kyc_id_number" maxlength="40" required placeholder="Example: PAN, Aadhaar ref, passport, or internal KYC ref" value="{{ reapply_prefill.kyc_id_number if reapply_prefill else '' }}"></label>
+      <label><span>Income Document Ref</span><input type="text" name="income_doc_ref" maxlength="80" required value="{{ reapply_prefill.income_doc_ref if reapply_prefill else '' }}"></label>
+      <label><span>Current Salary (annual)</span><input type="number" name="current_salary" min="12000" required value="{{ reapply_prefill.current_salary if reapply_prefill else '' }}"></label>
+      <label><span>Monthly Expenditure</span><input type="number" name="monthly_expenditure" min="0" required value="{{ reapply_prefill.monthly_expenditure if reapply_prefill else '' }}"></label>
+      <label><span>Existing EMI</span><input type="number" name="existing_emi" min="0" required value="{{ reapply_prefill.existing_emi if reapply_prefill else '' }}"></label>
+      <label><span>Requested Amount</span><input type="number" name="requested_amount" min="1000" required value="{{ reapply_prefill.requested_amount if reapply_prefill else '' }}"></label>
+      <label><span>Loan Term (months)</span><input type="number" name="loan_term_months" min="6" max="420" required value="{{ reapply_prefill.loan_term_months if reapply_prefill else '' }}"></label>
+      <label><span>Employment Years</span><input type="number" step="0.1" name="employment_years" min="0" required value="{{ reapply_prefill.employment_years if reapply_prefill else '' }}"></label>
+      <label><span>Calculated Credit Score</span><input type="text" value="System calculated from salary, EMI, obligations, tenure, employment, and collateral" readonly></label>
+      <label><span>Collateral Value</span><input type="number" name="collateral_value" min="0" required value="{{ reapply_prefill.collateral_value if reapply_prefill else '' }}"></label>
+      {% if reapply_prefill %}
+        <div class="full-width helper">A lower suggested loan amount has been prefilled. Update KYC ID and income document reference before resubmitting.</div>
+      {% endif %}
       <div class="full-width loan-type-sections">
         <section class="loan-type-section" data-loan-type="CAR">
           <h3>Car Loan Details</h3>
@@ -114,7 +123,7 @@
       <article><span>Approved</span><strong>{{ insights.totals.approved or 0 }}</strong></article>
       <article><span>Avg Approval Prob.</span><strong>{{ '%.1f'|format((insights.totals.avg_prob or 0) * 100) }}%</strong></article>
       <article><span>Avg Risk</span><strong>{{ '%.1f'|format(insights.totals.avg_risk or 0) }}</strong></article>
-      <article><span>Avg Requested</span><strong>${{ '%.0f'|format(insights.totals.avg_req or 0) }}</strong></article>
+      <article><span>Avg Requested</span><strong>INR {{ '%.0f'|format(insights.totals.avg_req or 0) }}</strong></article>
     </div>
     {% if insights.regions %}
       <table>
@@ -129,6 +138,63 @@
   </section>
 
   <section class="panel wide">
+    <div class="row-between">
+      <div>
+        <h2>KYC Journey</h2>
+        <p class="small-muted">Multi-step onboarding, OCR verification, and underwriting advisory.</p>
+      </div>
+      <a class="btn" href="{{ url_for('user_kyc_onboarding') }}">Open KYC Journey</a>
+    </div>
+    {% if latest_kyc_case %}
+      <div class="metric-cards compact">
+        <article><span>Status</span><strong>{{ latest_kyc_case.kyc_status }}</strong></article>
+        <article><span>OCR Status</span><strong>{{ latest_kyc_case.ocr_status }}</strong></article>
+        <article><span>Verification Score</span><strong>{{ '%.0f'|format(latest_kyc_case.verification_score or 0) }}</strong></article>
+        <article><span>Risk Level</span><strong>{{ latest_kyc_case.risk_level }}</strong></article>
+        <article><span>Approval Status</span><strong>{{ latest_kyc_case.approval_status }}</strong></article>
+        <article><span>Quality</span><strong>{{ latest_kyc_case.quality_label }}</strong></article>
+        <article><span>CIBIL Band</span><strong>{{ latest_kyc_case.cibil_band }}</strong></article>
+        <article><span>Status Flow</span><strong>{{ latest_kyc_case.status_flow }}</strong></article>
+      </div>
+      {% if latest_kyc_case.review %}
+        <div class="metric-cards compact" style="margin-top:0.7rem;">
+          <article><span>Requested</span><strong>{{ '%.2f'|format(latest_kyc_case.review.requested_amount or 0) }}</strong></article>
+          <article><span>Eligible</span><strong>{{ '%.2f'|format(latest_kyc_case.review.eligible_amount or 0) }}</strong></article>
+          <article><span>Safer Amount</span><strong>{{ '%.2f'|format(latest_kyc_case.review.suggested_safer_amount or 0) }}</strong></article>
+          <article><span>Recommendation Confidence</span><strong>{{ '%.0f'|format((latest_kyc_case.review.recommendation_confidence or 0) * 100) }}%</strong></article>
+        </div>
+        {% if latest_kyc_case.application_id and latest_kyc_case.review.approval_status != 'approved' %}
+          <form method="post" action="{{ url_for('user_application_reapply_lower', app_id=latest_kyc_case.application_id) }}" class="inline-form" style="margin-top:0.7rem;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn" type="submit">Reapply With Safer Amount</button>
+          </form>
+        {% endif %}
+        <div class="panel" style="margin-top:0.7rem;">
+          <h3>Underwriting Explanation</h3>
+          <p>{{ latest_kyc_case.review.explanation }}</p>
+        </div>
+      {% endif %}
+      {% if plan_comparisons %}
+        <div class="comparison-grid" style="margin-top:0.9rem;">
+          {% for plan in plan_comparisons %}
+            <article class="comparison-card {{ 'best' if plan.best_match else '' }}">
+              <div class="row-between">
+                <strong>{{ plan.name }}</strong>
+                {% if plan.best_match %}<span class="chip ok">Best match</span>{% endif %}
+              </div>
+              <p>Loan {{ '%.0f'|format(plan.loan_amount) }} | {{ plan.tenure_months }} months</p>
+              <p>EMI {{ '%.2f'|format(plan.emi) }} | Rate {{ '%.2f'|format(plan.interest_rate) }}%</p>
+              <p>Eligibility {{ plan.eligibility_pct }}% | Approval {{ plan.approval_probability_pct }}%</p>
+            </article>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% else %}
+      <p>No KYC onboarding case exists yet.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel wide">
     <h2>Latest Decision</h2>
     {% if result %}
       <div class="metric-cards compact">
@@ -136,18 +202,37 @@
         <article><span>Borrower Tier</span><strong>{{ result.borrower_segment or '-' }}</strong></article>
         <article><span>Risk Score</span><strong>{{ result.risk_score }}</strong></article>
         <article><span>Approval Probability</span><strong>{{ '%.1f'|format(result.approval_probability * 100) }}%</strong></article>
-        <article><span>Monthly Payment</span><strong>${{ '%.2f'|format(result.monthly_payment_est) }}</strong></article>
-        <article><span>Recommended Amount</span><strong>${{ '%.2f'|format(result.recommended_amount) }}</strong></article>
+        <article><span>Monthly Payment</span><strong>{{ '%.2f'|format(result.monthly_payment_est) }}</strong></article>
+        <article><span>Recommended Amount</span><strong>{{ '%.2f'|format(result.recommended_amount) }}</strong></article>
+        <article><span>Calculated Credit Score</span><strong>{{ result.credit_score or (result_meta.credit_score if result_meta else '-') }}</strong></article>
         <article><span>Chain Hash</span><code>{{ result.blockchain_hash[:16] }}...</code></article>
       </div>
+      {% if result.status == 'Rejected' and result.recommended_amount and result.recommended_amount > 0 %}
+        <div class="panel" style="margin-top:0.7rem;">
+          <h3>Lower Amount Suggestion</h3>
+          <p>
+            Your current request was rejected. You can reapply with
+            <strong> {{ '%.2f'|format(result.recommended_amount) }}</strong>
+            as a safer amount.
+          </p>
+          {% if result_meta and result_meta.recommendation_note %}
+            <p class="small-muted">{{ result_meta.recommendation_note }}</p>
+          {% endif %}
+          <form method="post" action="{{ url_for('user_application_reapply_lower', app_id=result.id) }}" class="inline-form" style="margin-top:0.7rem;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn" type="submit">Reapply With Suggested Amount</button>
+          </form>
+        </div>
+      {% endif %}
       {% if result_meta %}
         <div class="metric-cards" style="margin-top:0.7rem;">
           <article><span>Loan Product</span><strong>{{ result_meta.product_code or '-' }}</strong></article>
           <article><span>Loan Type</span><strong>{{ result_meta.loan_type or '-' }}</strong></article>
-          <article><span>Preferred Currencies</span><strong>{{ (result_meta.preferred_currencies or ['USD'])|join(', ') }}</strong></article>
+          <article><span>Preferred Currencies</span><strong>{{ (result_meta.preferred_currencies or ['INR'])|join(', ') }}</strong></article>
           <article><span>Verification Level</span><strong>{{ result_meta.verification_level or 'Standard' }}</strong></article>
+          <article><span>Credit Score Source</span><strong>{{ result_meta.credit_score_source or 'system_calculated' }}</strong></article>
           <article><span>Collateral Required</span><strong>{{ 'Yes' if result_meta.collateral_required else 'No' }}</strong></article>
-          <article><span>Collateral Shortfall</span><strong>${{ '%.2f'|format(result_meta.collateral_shortfall or 0) }}</strong></article>
+          <article><span>Collateral Shortfall</span><strong>{{ '%.2f'|format(result_meta.collateral_shortfall or 0) }}</strong></article>
         </div>
         {% if result_meta.required_documents %}
           <div class="panel" style="margin-top:0.7rem;">
@@ -187,7 +272,7 @@
           <thead>
             <tr>
               <th>ID</th><th>Created</th><th>Region</th><th>Salary</th><th>Expenditure</th>
-              <th>Requested</th><th>Loan Type</th><th>Policy Type</th><th>Currencies</th><th>Status</th><th>Decision Tier</th><th>Borrower Tier</th><th>Risk</th><th>Prob.</th><th>Download</th><th>OCR Upload</th>
+              <th>Requested</th><th>Loan Type</th><th>Policy Type</th><th>Currencies</th><th>Status</th><th>Decision Tier</th><th>Borrower Tier</th><th>Risk</th><th>Prob.</th><th>Download</th><th>OCR Upload</th><th>Lower Amount</th>
             </tr>
           </thead>
           <tbody>
@@ -196,9 +281,9 @@
                 <td>{{ app.id }}</td>
                 <td>{{ app.created_at }}</td>
                 <td>{{ app.region }}</td>
-                <td>${{ '%.0f'|format(app.current_salary) }}</td>
-                <td>${{ '%.0f'|format(app.monthly_expenditure) }}</td>
-                <td>${{ '%.0f'|format(app.requested_amount) }}</td>
+                <td>INR {{ '%.0f'|format(app.current_salary) }}</td>
+                <td>INR {{ '%.0f'|format(app.monthly_expenditure) }}</td>
+                <td>INR {{ '%.0f'|format(app.requested_amount) }}</td>
                 <td>{{ app.loan_type }}</td>
                 <td>{{ app.policy_type or 'STANDARD' }}</td>
                 <td>{{ app.preferred_currencies_label }}</td>
@@ -211,9 +296,27 @@
                 <td>
                   <form method="post" action="{{ url_for('user_application_upload_document', app_id=app.id) }}" enctype="multipart/form-data" class="inline-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <input type="file" name="document_file" accept=".txt,.csv,.md,.json,.pdf,.doc,.docx" required>
+                    <select name="doc_type">
+                      <option>PAN Card</option>
+                      <option>Salary Slip 1</option>
+                      <option>Salary Slip 2</option>
+                      <option>Salary Slip 3</option>
+                      <option>Joining Letter</option>
+                      <option selected>Bank Statement (6 months)</option>
+                      <option>Selfie Image</option>
+                    </select>
+                    <input type="file" name="document_file" accept=".txt,.csv,.md,.json,.pdf,.doc,.docx,.jpg,.jpeg,.png,.svg" required>
                     <button class="btn tiny" type="submit">Upload</button>
                   </form>
+                  <div class="helper">Use this to upload PDF salary slips, joining letters, bank statements, or PAN scans for verification.</div>
+                </td>
+                <td>
+                  {% if app.status != 'Approved' %}
+                    <form method="post" action="{{ url_for('user_application_reapply_lower', app_id=app.id) }}" class="inline-form">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                      <button class="btn tiny ghost" type="submit">Reapply Lower</button>
+                    </form>
+                  {% endif %}
                 </td>
               </tr>
             {% endfor %}
@@ -232,17 +335,27 @@
       <label>
         <span>Policy</span>
         <select name="policy_id" required>
-          <option value="">Select Policy</option>
+          <option value="">{% if policies %}Select Policy{% else %}No issued policy available yet{% endif %}</option>
           {% for p in policies %}
             <option value="{{ p.id }}">{{ p.policy_number }} ({{ p.policy_type }})</option>
           {% endfor %}
         </select>
       </label>
-      <label><span>Claim Type</span><input name="claim_type" value="General"></label>
+      <label><span>Claim Type</span>
+        <select name="claim_type" required>
+          <option value="General" selected>General</option>
+          <option value="Payment Dispute">Payment Dispute</option>
+          <option value="Wrong Debit">Wrong Debit</option>
+          <option value="Foreclosure Support">Foreclosure Support</option>
+          <option value="Document Correction">Document Correction</option>
+          <option value="Fraud Review">Fraud Review</option>
+        </select>
+      </label>
       <label><span>Claimed Amount</span><input type="number" step="0.01" name="claimed_amount" min="1" required></label>
       <label class="full-width"><span>Description</span><input name="description" maxlength="180" required></label>
       <button class="btn" type="submit">Submit Claim</button>
     </form>
+    <p class="small-muted">Claim submission becomes available after an application is approved and a policy is issued.</p>
     <div class="table-wrap table-readable" style="margin-top:0.8rem;">
       <table>
         <thead><tr><th>ID</th><th>Policy ID</th><th>Type</th><th>Amount</th><th>Status</th><th>Opened</th></tr></thead>
@@ -250,7 +363,7 @@
           {% for c in claims %}
             <tr>
               <td>{{ c.id }}</td><td>{{ c.policy_id }}</td><td>{{ c.claim_type }}</td>
-              <td>${{ '%.2f'|format(c.claimed_amount) }}</td><td>{{ c.status }}</td><td>{{ c.opened_at }}</td>
+              <td>INR {{ '%.2f'|format(c.claimed_amount) }}</td><td>{{ c.status }}</td><td>{{ c.opened_at }}</td>
             </tr>
           {% else %}
             <tr><td colspan="6">No claims filed yet.</td></tr>

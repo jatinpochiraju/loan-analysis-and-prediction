@@ -169,6 +169,7 @@ p { color: var(--muted); }
 
 label { display: grid; gap: 0.25rem; }
 label span { font-size: clamp(0.82rem, 0.15vw + 0.76rem, 0.9rem); color: var(--muted); }
+.field-label { display: block; margin-bottom: 0.35rem; font-size: clamp(0.82rem, 0.15vw + 0.76rem, 0.9rem); color: var(--muted); }
 input, select {
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -198,6 +199,27 @@ input:focus, select:focus {
 }
 .currency-select {
   min-height: 7.8rem;
+}
+.choice-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.choice-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.48rem 0.62rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #f8fbff;
+  cursor: pointer;
+}
+.choice-chip input {
+  margin: 0;
+}
+.choice-chip span {
+  color: var(--ink);
 }
 .loan-type-sections {
   border: 1px dashed #bfd4e8;
@@ -562,6 +584,49 @@ code {
   background: #f1f8ff;
   transform: translateY(-1px);
   box-shadow: 0 6px 14px rgba(16, 32, 48, 0.08);
+}
+
+.step-strip,
+.comparison-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.7rem;
+}
+
+.step-card,
+.comparison-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.75rem;
+  background: #fbfdff;
+}
+
+.step-card span,
+.comparison-card p {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.step-card.active {
+  border-color: #80b7e3;
+  background: linear-gradient(180deg, #f4f9ff, #eef6ff);
+}
+
+.comparison-card.best {
+  border-color: #9fd2b1;
+  background: linear-gradient(180deg, #f2fbf5, #ecf9f1);
+}
+
+.comparison-card.heat.high {
+  border-left: 4px solid #b42318;
+}
+
+.comparison-card.heat.medium {
+  border-left: 4px solid #c48a00;
+}
+
+.comparison-card.heat.low {
+  border-left: 4px solid #107a46;
 }
 
 @media (prefers-reduced-motion: reduce) {

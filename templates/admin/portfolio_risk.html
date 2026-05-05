@@ -7,7 +7,7 @@
     <p class="small-muted">Exposure and stress-test view by region and product.</p>
     <div class="metric-cards compact">
       <article><span>Applications</span><strong>{{ totals.applications }}</strong></article>
-      <article><span>Total Exposure</span><strong>${{ '%.2f'|format(totals.total_exposure) }}</strong></article>
+      <article><span>Total Exposure</span><strong>{{ '%.2f'|format(totals.total_exposure) }}</strong></article>
       <article><span>Average Risk</span><strong>{{ totals.avg_risk }}</strong></article>
       <article><span>Stress Rejections (Est.)</span><strong>{{ totals.stressed_rejections_est }}</strong></article>
     </div>
@@ -24,7 +24,7 @@
               <td>{{ b.approval_rate }}</td>
               <td>{{ b.avg_risk }}</td>
               <td>{{ b.avg_prob }}</td>
-              <td>${{ '%.2f'|format(b.exposure) }}</td>
+              <td>{{ '%.2f'|format(b.exposure) }}</td>
             </tr>
           {% else %}
             <tr><td colspan="7">No portfolio data available.</td></tr>

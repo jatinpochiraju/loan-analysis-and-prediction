@@ -1,5 +1,7 @@
 Flask
+fastapi
 pandas
+sqlalchemy
 scikit-learn
 numpy
 requests
