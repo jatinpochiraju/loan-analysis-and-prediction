@@ -33,7 +33,6 @@ Each screenshot has been renamed to describe what it shows instead of using time
 |---|---|
 | Home landing page and suite module overview | `screenshots/01_home_landing_suite_overview.png` |
 | User login page with borrower credentials | `screenshots/02_user_login_credentials.png` |
-| User login form close-up | `screenshots/03_user_login_form.png` |
 | User PolicyCenter dashboard and loan application form | `screenshots/04_user_policycenter_dashboard.png` |
 | Mock KYC and document upload journey | `screenshots/05_kyc_document_journey.png` |
 | Loan comparison simulator | `screenshots/06_loan_comparison_simulator.png` |
