@@ -50,8 +50,6 @@ The landing page shows the LoanShield Insurance Suite overview, including entry 
 
 The borrower login page gives applicants access to loan workflows, dashboards, and KYC journeys.
 
-![User login form close-up](screenshots/03_user_login_form.png)
-
 This close-up shows the same user authentication form with username, password, and sign-in action.
 
 ### User PolicyCenter Dashboard
